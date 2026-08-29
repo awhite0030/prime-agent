@@ -277,7 +277,17 @@ function seedSupervisorRoster(
 	supervisor: object,
 	...workers: Array<{ descriptor: { workerId: string }; summaries: Map<string, SessionSummary> }>
 ): void {
-	const internals = supervisor as { syncWorkerSummariesIntoRoster(worker: object): void };
+	const internals = supervisor as {
+		syncWorkerSummariesIntoRoster(worker: object): void;
+		clients?: Set<unknown>;
+	};
+	// Prototype-based fixtures skip field initializers; give the push buffers real containers.
+	Object.assign(internals, {
+		pendingRosterChanged: new Set(),
+		pendingRosterRemoved: new Set(),
+		rosterPushScheduled: false,
+		clients: internals.clients ?? new Set(),
+	});
 	for (const worker of workers) internals.syncWorkerSummariesIntoRoster(worker);
 }
 

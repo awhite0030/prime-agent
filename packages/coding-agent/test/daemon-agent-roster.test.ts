@@ -406,6 +406,9 @@ function makeSupervisor(workers: WorkerFixture[], extra: Record<string, unknown>
 	return Object.assign(Object.create(DaemonSupervisor.prototype), {
 		workers: new Map(workers.map((worker) => [worker.descriptor.workerId, worker])),
 		clients: new Set(),
+		pendingRosterChanged: new Set(),
+		pendingRosterRemoved: new Set(),
+		rosterPushScheduled: false,
 		refreshWorkerSummaries: vi.fn(async () => {}),
 		persistWorker: vi.fn(),
 		invalidateWorkerSessionInputPauses: vi.fn(),

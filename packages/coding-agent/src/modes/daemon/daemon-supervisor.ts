@@ -59,6 +59,7 @@ import { createActiveSessionId, type DaemonSocketClient } from "./active-session
 import {
 	type AgentRosterEntry,
 	AgentRosterLedger,
+	type AgentRosterMutation,
 	passivatedWorkerRosterEntry,
 	sessionSummaryFromRosterEntry,
 	type WorkerRosterEntry,
@@ -85,6 +86,7 @@ import {
 	type DaemonCommand,
 	type DaemonOutbound,
 	type DaemonResponse,
+	type DaemonServerCapability,
 	type DaemonUpdateRestartManifest,
 	failure,
 	isDaemonCommandEnvelope,
@@ -151,6 +153,11 @@ const structuredLog = getLogger("coding-agent.daemon-supervisor");
 const WORKER_CONNECT_TIMEOUT_MS = 30_000;
 const ROSTER_WATCHDOG_INTERVAL_MS = 15_000;
 const ROSTER_STALE_AFTER_MS = 45_000;
+// The roster subscription is supervisor-only; plain daemon-mode hellos keep the default list.
+const SUPERVISOR_SERVER_CAPABILITIES: readonly DaemonServerCapability[] = [
+	...DAEMON_DEFAULT_SERVER_CAPABILITIES,
+	"agent_roster",
+];
 const WORKER_REQUEST_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const INPUT_PAUSE_CLEANUP_TIMEOUT_MS = 5_000;
 const UPDATE_RESTART_MUTATION_DRAIN_TIMEOUT_MS = 80_000;
@@ -181,6 +188,8 @@ const DAEMON_COMMAND_TYPES: ReadonlySet<string> = new Set([
 	"ack_result",
 	"list",
 	"list_agent_peers",
+	"roster_subscribe",
+	"roster_unsubscribe",
 	"list_saved_sessions",
 	"create",
 	"attach",
@@ -636,6 +645,9 @@ export class DaemonSupervisor {
 	private readonly catalog: DaemonCatalogClient;
 	private readonly settingsManager: SettingsManager;
 	private rosterStore?: AgentRosterLedger;
+	private readonly pendingRosterChanged = new Set<string>();
+	private readonly pendingRosterRemoved = new Set<string>();
+	private rosterPushScheduled = false;
 	private rosterWatchdogTimer?: ReturnType<typeof setInterval>;
 	private rlmSpawnLedgerInstance?: RlmSpawnLedger;
 	private idleEvictionTimer?: ReturnType<typeof setTimeout>;
@@ -1085,7 +1097,7 @@ export class DaemonSupervisor {
 						supervisorProcessStartId: this.ownership?.record.processStartId,
 						supervisorSocketPath: this.ownership?.record.socketPath,
 						clientId: client.id,
-						serverCapabilities: DAEMON_DEFAULT_SERVER_CAPABILITIES,
+						serverCapabilities: SUPERVISOR_SERVER_CAPABILITIES,
 					});
 				}
 			},
@@ -1117,6 +1129,10 @@ export class DaemonSupervisor {
 		socket.on("error", cleanup);
 		socket.on("drain", () => {
 			client.backpressured = false;
+			if (client.rosterResyncPending) {
+				client.rosterResyncPending = false;
+				this.write(client, { type: "roster_update", changed: this.rosterEntriesForClient(), resync: true });
+			}
 			if (!client.snapshotStreaming) {
 				void this.catchUpClient(client).catch((error) =>
 					this.log(`Failed to catch up client ${client.id}: ${String(error)}`),
@@ -1537,6 +1553,12 @@ export class DaemonSupervisor {
 				return undefined;
 			case "list":
 				return this.handleList(client, command);
+			case "roster_subscribe":
+				client.rosterSubscribed = true;
+				return success(command.id, command.type, { roster: this.rosterEntriesForClient() });
+			case "roster_unsubscribe":
+				client.rosterSubscribed = false;
+				return success(command.id, command.type);
 			case "list_agent_peers": {
 				const requester = [...this.workers.values()].find(
 					(worker) => worker.descriptor.authenticationToken === command.workerToken,
@@ -3422,8 +3444,62 @@ export class DaemonSupervisor {
 
 	// The agent roster: the single supervisor-side projection every list and selector read is served from.
 	private roster(): AgentRosterLedger {
-		this.rosterStore ??= new AgentRosterLedger(canonicalSessionPath);
+		this.rosterStore ??= new AgentRosterLedger(canonicalSessionPath, (mutation) => this.onRosterMutation(mutation));
 		return this.rosterStore;
+	}
+
+	private onRosterMutation(mutation: AgentRosterMutation): void {
+		if (mutation.type === "delete") {
+			this.pendingRosterChanged.delete(mutation.agentId);
+			this.pendingRosterRemoved.add(mutation.agentId);
+		} else {
+			this.pendingRosterRemoved.delete(mutation.agentId);
+			this.pendingRosterChanged.add(mutation.agentId);
+		}
+		this.scheduleRosterPush();
+	}
+
+	private scheduleRosterPush(): void {
+		if (this.rosterPushScheduled || this.shuttingDown) return;
+		this.rosterPushScheduled = true;
+		setImmediate(() => {
+			this.rosterPushScheduled = false;
+			this.flushRosterUpdates();
+		});
+	}
+
+	private flushRosterUpdates(): void {
+		const changed: AgentRosterEntry[] = [];
+		for (const agentId of this.pendingRosterChanged) {
+			const entry = this.roster().get(agentId);
+			if (entry && this.isRosterEntryVisibleToClients(entry)) changed.push(entry);
+		}
+		const removed = [...this.pendingRosterRemoved];
+		this.pendingRosterChanged.clear();
+		this.pendingRosterRemoved.clear();
+		if (changed.length === 0 && removed.length === 0) return;
+		for (const client of this.clients) {
+			if (client.rosterSubscribed !== true) continue;
+			if (client.backpressured === true) {
+				client.rosterResyncPending = true;
+				continue;
+			}
+			this.write(client, {
+				type: "roster_update",
+				changed,
+				...(removed.length > 0 ? { removed } : {}),
+			});
+		}
+	}
+
+	private rosterEntriesForClient(): AgentRosterEntry[] {
+		return [...this.roster().values()].filter((entry) => this.isRosterEntryVisibleToClients(entry));
+	}
+
+	// Client-owned workers stay hidden from the roster surface, mirroring plain list.
+	private isRosterEntryVisibleToClients(entry: AgentRosterEntry): boolean {
+		const worker = entry.workerId !== undefined ? this.workers.get(entry.workerId) : undefined;
+		return worker === undefined || this.isVisibleWorker(worker);
 	}
 
 	private writeRosterEntry(
@@ -3556,6 +3632,7 @@ export class DaemonSupervisor {
 			if (!entry.queuedChild && entry.summary.activeSessionId === undefined) continue;
 			if (statusLabel === undefined) delete entry.statusLabel;
 			else entry.statusLabel = statusLabel;
+			this.onRosterMutation({ type: "write", agentId: entry.agentId });
 		}
 	}
 
@@ -3575,6 +3652,7 @@ export class DaemonSupervisor {
 				const lastHeardFromAt = new Date(worker.lastFrameAt).toISOString();
 				for (const entry of this.workerRosterEntries(worker)) {
 					entry.lastHeardFromAt = lastHeardFromAt;
+					this.onRosterMutation({ type: "write", agentId: entry.agentId });
 				}
 				worker.rosterStale = true;
 			} else if (worker.rosterStale) {
@@ -3588,6 +3666,7 @@ export class DaemonSupervisor {
 		worker.rosterStale = false;
 		for (const entry of this.workerRosterEntries(worker)) {
 			delete entry.lastHeardFromAt;
+			this.onRosterMutation({ type: "write", agentId: entry.agentId });
 		}
 	}
 
@@ -3732,7 +3811,7 @@ export class DaemonSupervisor {
 			id: summary.sessionId,
 			...(summary.sessionName ? { name: summary.sessionName } : {}),
 			depth,
-			status: classifySessionRosterStatus(summary),
+			status: summary.rosterStatus ?? classifySessionRosterStatus(summary),
 			...(depth > 0 && summary.parentSessionId ? { parentSessionId: summary.parentSessionId } : {}),
 			...(depth > 0 && summary.parentSessionPath
 				? { parentSessionPath: canonicalSessionPath(summary.parentSessionPath) }
@@ -3759,7 +3838,7 @@ export class DaemonSupervisor {
 			...(summary.parentSessionPath ? { parentSessionPath: summary.parentSessionPath } : {}),
 			...(summary.sessionFile ? { sessionPath: summary.sessionFile } : {}),
 			...(summary.rlmDepth !== undefined ? { rlmDepth: summary.rlmDepth } : {}),
-			status: classifySessionRosterStatus(summary),
+			status: summary.rosterStatus ?? classifySessionRosterStatus(summary),
 			...(summary.rlmChildId ? { rlmChildId: summary.rlmChildId } : {}),
 		};
 	}
