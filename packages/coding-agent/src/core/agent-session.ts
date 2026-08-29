@@ -9664,6 +9664,9 @@ export class AgentSession {
 			if (!sessionDir) {
 				continue;
 			}
+
+			const daemonIsRunning = daemonChild?.status === "running" || daemonChild?.rlmChildRegistryStatus === "running";
+
 			subagents.push({
 				rlm_child_id: childId,
 				active_session_id: daemonChild?.activeSessionId ?? null,
@@ -9671,7 +9674,10 @@ export class AgentSession {
 				session_name:
 					daemonChild?.sessionName ?? childSession.sessionName ?? createDefaultRlmSubagentSessionName("", childId),
 				session_dir: sessionDir,
-				status: "completed",
+				status:
+					childSession.isSessionActive || childSession.hasRunningRlmChildren() || daemonIsRunning
+						? "running"
+						: "completed",
 			});
 			recorded.add(childId);
 		}
@@ -9685,13 +9691,16 @@ export class AgentSession {
 			) {
 				continue;
 			}
+
+			const isRunning = daemonChild.status === "running" || daemonChild.rlmChildRegistryStatus === "running";
+
 			subagents.push({
 				rlm_child_id: childId,
 				active_session_id: daemonChild.activeSessionId,
 				session_id: daemonChild.sessionId,
 				session_name: daemonChild.sessionName ?? createDefaultRlmSubagentSessionName("", childId),
 				session_dir: daemonChild.sessionDir,
-				status: daemonChild.rlmChildRegistryStatus === "completed" ? "completed" : "error",
+				status: isRunning ? "running" : daemonChild.rlmChildRegistryStatus === "completed" ? "completed" : "error",
 			});
 		}
 		return { subagents };
