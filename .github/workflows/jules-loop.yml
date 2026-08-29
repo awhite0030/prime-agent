@@ -38,7 +38,7 @@ jobs:
        (contains(github.event.pull_request.body, 'created automatically by Jules') ||
         github.event.pull_request.user.login == 'google-labs-jules[bot]'))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

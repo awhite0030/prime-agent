@@ -74,7 +74,23 @@ for num in $(jq -r '.dispatched // {} | to_entries[]
 done
 state=$(state_prune <<<"$state")
 
-# --- 2. Budget guard ----------------------------------------------------------
+# --- 2. In-flight guard (unless a specific discussion was requested) -----------
+# A "dispatched" status means the Jules session has not reached a terminal
+# state yet. While one is running, this run just watches: sleep, then trigger
+# the next run to reconcile again.
+in_flight=$(jq -r '[.dispatched // {} | to_entries[]
+                     | select(.value.status == "dispatched")] | length' <<<"$state")
+
+if [ -z "$OVERRIDE_DISCUSSION" ] && [ "$in_flight" -gt 0 ]; then
+  echo "in-flight session(s): $in_flight - sleeping 10m, then re-checking"
+  sleep 600
+  gh workflow run jules-loop.yml --repo "${GITHUB_REPOSITORY}" --ref main \
+    && echo "queued the next loop run" \
+    || echo "WARNING: could not self-dispatch the next loop run"
+  exit 0
+fi
+
+# --- 3. Budget guard ----------------------------------------------------------
 if [ "$SKIP_BUDGET" != "true" ]; then
   used=$(jules_sessions_last_24h)
   echo "budget: ${used}/${BUDGET} Jules sessions in the last 24h"
@@ -87,7 +103,7 @@ else
   echo "budget: skipped by request"
 fi
 
-# --- 3. Jules source check ------------------------------------------------------
+# --- 4. Jules source check ------------------------------------------------------
 sources=$(curl -sS -H "X-Goog-Api-Key: ${JULES_API_KEY}" "${JULES_API}/sources?pageSize=100")
 if ! jq -e --arg src "sources/github/${GITHUB_REPOSITORY}" \
      '.sources // [] | map(.name) | index($src)' <<<"$sources" >/dev/null; then
@@ -96,12 +112,12 @@ if ! jq -e --arg src "sources/github/${GITHUB_REPOSITORY}" \
   exit 2
 fi
 
-# --- 4. Sync the fork with upstream ---------------------------------------------
+# --- 5. Sync the fork with upstream ---------------------------------------------
 sync_msg=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/merge-upstream" -F branch=main 2>&1 \
   | jq -r '.message // .' 2>/dev/null || echo "sync check failed")
 echo "upstream sync: ${sync_msg}"
 
-# --- 5. Discovery ----------------------------------------------------------------
+# --- 6. Discovery ----------------------------------------------------------------
 cat_id=$(graphql_file_request /dev/stdin '{"owner":"PrimeIntellect-ai","name":"prime-agent"}' \
   <<'Q' | jq -r '.data.repository.discussionCategories.nodes[] | select(.name == "Bug reports") | .id'
 query($owner: String!, $name: String!) {
@@ -155,7 +171,7 @@ title=$(jq -r .title <<<"$chosen")
 url=$(jq -r .url <<<"$chosen")
 echo "selected discussion #$num: $title"
 
-# --- 6. Build prompt and dispatch -------------------------------------------------
+# --- 7. Build prompt and dispatch -------------------------------------------------
 body_file=$(mktemp); comments_file=$(mktemp); directives_file=$(mktemp); prompt_file=$(mktemp); payload_file=$(mktemp)
 trap 'rm -f "$body_file" "$comments_file" "$directives_file" "$prompt_file" "$payload_file"' EXIT
 
