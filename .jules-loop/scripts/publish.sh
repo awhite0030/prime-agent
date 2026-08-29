@@ -48,7 +48,7 @@ printf '%s' "$draft" > "$draft_file"
 state=$(state_get)
 today=$(date -u +%F)
 posted_today=$(jq -r --arg d "$today" 'if .postDay == $d then (.postCount // 0) else 0 end' <<<"$state")
-already=$(jq -r --arg n "${disc_num:-}" '($n != "") and (($.posted // {}) | has($n))' <<<"$state")
+already=$(jq -r --arg n "${disc_num:-}" '($n != "") and ((.posted // {}) | has($n))' <<<"$state")
 
 post_url=""
 reason="autopost disabled"
