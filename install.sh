@@ -133,11 +133,9 @@ main() {
 		fi
 		cat <<EOF
 The $prime_agent_cmd command was installed, but it is not on your PATH yet.
-Check npm's global bin directory with:
+Add npm's global bin directory to your shell PATH:
 
-  npm bin -g
-
-Then add that directory to your shell PATH.
+  \$(npm prefix -g 2>/dev/null)/bin
 EOF
 	fi
 }
