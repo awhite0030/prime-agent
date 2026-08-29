@@ -1,0 +1,38 @@
+name: Jules contribute
+
+# Manual override: post the draft comment from a PR to an upstream Discussion.
+# Use when autopost is off, the daily cap was reached, or a repost is needed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      discussion_number:
+        description: 'Upstream discussion number'
+        required: true
+      pr_number:
+        description: 'Fork pull request with the draft comment'
+        required: true
+
+concurrency:
+  group: jules-contribute
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Post draft upstream
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          DISCUSSION_NUMBER: ${{ github.event.inputs.discussion_number }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        run: bash .jules-loop/scripts/repost.sh

@@ -1,0 +1,89 @@
+name: Jules validate
+
+# Validates pull requests opened by the Jules bot on this fork:
+# build + check + focused regression tests. On success the publish job posts
+# the upstream comment (daily-capped) and merges the PR, which chains the loop.
+# On failure the PR is closed with the log tail and the state records the miss.
+
+on:
+  pull_request:
+    types: [opened]
+
+concurrency:
+  group: jules-validate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+jobs:
+  validate:
+    if: >-
+      github.event.pull_request.user.login == 'google-labs-jules[bot]' ||
+      startsWith(github.event.pull_request.head.ref, 'jules/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          sudo ln -s $(which fdfind) /usr/local/bin/fd
+
+      - name: Install uv
+        run: |
+          python3 -m pip install --user uv
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Check
+        run: npm run check
+
+      - name: Focused regression tests
+        run: bash .jules-loop/scripts/run_focused_tests.sh
+
+      - name: Record failure on the pull request
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash .jules-loop/scripts/reject.sh
+
+  publish:
+    needs: validate
+    if: needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Post upstream comment and merge
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          AUTOPOST: ${{ vars.JULES_AUTOPOST || 'true' }}
+          MAX_POSTS: ${{ vars.JULES_MAX_POSTS || '2' }}
+        run: bash .jules-loop/scripts/publish.sh

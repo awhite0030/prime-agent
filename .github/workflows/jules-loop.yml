@@ -1,0 +1,54 @@
+name: Jules loop
+
+# Picks the next bug report from upstream Discussions and dispatches a Jules
+# session on this fork. The loop closes when a validated Jules PR is merged:
+# the merge event re-runs this workflow (communicate via commits).
+
+on:
+  workflow_dispatch:
+    inputs:
+      discussion_number:
+        description: 'Upstream discussion number to fix (empty = pick automatically)'
+        required: false
+        default: ''
+      skip_budget_guard:
+        description: 'Ignore the daily Jules budget guard'
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    - cron: '7 */2 * * *'
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: jules-loop
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    # Chain only from merged pull requests authored by the Jules bot.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.merged == true &&
+       (github.event.pull_request.user.login == 'google-labs-jules[bot]' ||
+        startsWith(github.event.pull_request.head.ref, 'jules/')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Pick next task and dispatch Jules
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GH_TOKEN: ${{ secrets.PAT }}
+          BUDGET: ${{ vars.JULES_DAILY_BUDGET }}
+          OVERRIDE_DISCUSSION: ${{ github.event.inputs.discussion_number }}
+          SKIP_BUDGET: ${{ github.event.inputs.skip_budget_guard }}
+        run: bash .jules-loop/scripts/pick_and_dispatch.sh

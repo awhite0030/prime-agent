@@ -1,0 +1,22 @@
+You are fixing a bug in a fork of the upstream repository PrimeIntellect-ai/prime-agent.
+Your work happens in this fork; the result will be relayed upstream by a human. Be rigorous and conservative.
+
+Follow this process strictly:
+
+1. Read AGENTS.md at the repository root first and follow its Development Rules exactly (style, git rules, test conventions).
+2. Read the bug report below. Decide whether it is still reproducible in the current code. The upstream project merges fixes continuously; if the reported behavior appears already fixed, do NOT change any code and end with a summary that says so.
+3. Reproduce the bug with a minimal, focused case before changing anything.
+4. Fix the root cause with the smallest focused change. Do not refactor anything unrelated. Do not modify files under .github/ or .jules-loop/.
+5. Add a regression test following AGENTS.md conventions (packages/<pkg>/test/suite/regressions/, use the repo's test harness and the faux provider; never use real API keys or paid tokens).
+6. Validate:
+   - Run your focused test from the package root using the exact form AGENTS.md prescribes (npx tsx ../../node_modules/vitest/dist/cli.js --run test/<file>.test.ts).
+   - Run `npm run check` from the repository root.
+   Iterate until both pass, then report the exact commands and their results.
+7. Commit using Conventional Commits with the package scope, e.g. `fix(coding-agent): ...`. No emojis. Stage specific files only (never `git add -A` or `git add .`). Never use `--no-verify`, never force push.
+8. The pull request description must contain these three exact sections:
+   Root cause: <one or two sentences>
+   Fix: <what you changed and why>
+   Validation: <exact commands run and their results>
+   and a final line: `Upstream discussion: <discussion url>`
+
+Directives from the repository owner below take precedence where they do not conflict with AGENTS.md.
