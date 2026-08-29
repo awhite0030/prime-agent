@@ -30,12 +30,13 @@ permissions:
 
 jobs:
   run:
-    # Chain only from merged pull requests authored by the Jules bot.
+    # Chain only from merged pull requests created by the Jules loop. Jules
+    # opens PRs under the user's own login, so match its body marker too.
     if: >-
       github.event_name != 'pull_request' ||
       (github.event.pull_request.merged == true &&
-       (github.event.pull_request.user.login == 'google-labs-jules[bot]' ||
-        startsWith(github.event.pull_request.head.ref, 'jules/')))
+       (contains(github.event.pull_request.body, 'created automatically by Jules') ||
+        github.event.pull_request.user.login == 'google-labs-jules[bot]'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

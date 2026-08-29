@@ -6,6 +6,11 @@ name: Jules validate
 # On failure the PR is closed with the log tail and the state records the miss.
 
 on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Fork pull request number to validate'
+        required: true
   pull_request:
     types: [opened]
 
@@ -20,16 +25,26 @@ permissions:
 
 jobs:
   validate:
+    # Jules opens PRs under the user's own login, so recognize its work by the
+    # marker it puts in the PR body (or the bot login, if it ever uses it).
     if: >-
-      github.event.pull_request.user.login == 'google-labs-jules[bot]' ||
-      startsWith(github.event.pull_request.head.ref, 'jules/')
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.body, 'created automatically by Jules') ||
+      github.event.pull_request.user.login == 'google-labs-jules[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
+      - name: Resolve pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.inputs.pr_number || github.event.pull_request.number }}
+        run: echo "sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout pull request head
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -66,7 +81,7 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.PAT }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number || github.event.pull_request.number }}
         run: bash .jules-loop/scripts/reject.sh
 
   publish:
@@ -83,7 +98,7 @@ jobs:
       - name: Post upstream comment and merge
         env:
           GH_TOKEN: ${{ secrets.PAT }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number || github.event.pull_request.number }}
           AUTOPOST: ${{ vars.JULES_AUTOPOST || 'true' }}
           MAX_POSTS: ${{ vars.JULES_MAX_POSTS || '2' }}
         run: bash .jules-loop/scripts/publish.sh
