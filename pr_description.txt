@@ -1,0 +1,4 @@
+Root cause: Large tool results triggering backpressure lead to subsequent `tool_execution_end` events being queued in snapshot filters, preventing prompt resolutions.
+Fix: Let sequenced recovery checkpoint events bypass `snapshotActiveSessionIds` and `backpressured` filters on the worker-daemon boundary, and let `tool_execution_end` bypass equivalent filters on the supervisor-client boundary.
+Validation: Ran `npm run check` which passed, and added focused tests verifying `tool_execution_end` delivery when backpressured, run via `npx tsx ../../node_modules/vitest/dist/cli.js --run test/suite/regressions/1902-lossless-daemon-terminal-events.test.ts`.
+Upstream discussion: https://github.com/PrimeIntellect-ai/prime-agent/discussions/1902
