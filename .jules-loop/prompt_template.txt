@@ -3,6 +3,7 @@ Your work happens in this fork; the result will be relayed upstream by a human. 
 
 Follow this process strictly:
 
+0. Work fully autonomously: NEVER ask questions and NEVER wait for feedback. If the report is stale, ambiguous, or you cannot find the relevant code, pick the most reasonable interpretation, document the assumption in your summary, and complete the session. A paused session is a failed session.
 1. Read AGENTS.md at the repository root first and follow its Development Rules exactly (style, git rules, test conventions).
 2. Read the bug report below. Decide whether it is still reproducible in the current code. The upstream project merges fixes continuously; if the reported behavior appears already fixed, do NOT change any code and end with a summary that says so.
 3. Reproduce the bug with a minimal, focused case before changing anything.

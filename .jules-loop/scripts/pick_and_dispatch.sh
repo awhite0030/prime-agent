@@ -43,7 +43,7 @@ for num in $(jq -r '.dispatched // {} | to_entries[]
       echo "reconcile: discussion #$num session $sid FAILED ${reason}"
       state=$(jq -c --arg n "$num" '.dispatched[$n].status = "failed"' <<<"$state")
       ;;
-    QUEUED|PLANNING|IN_PROGRESS|PAUSED|AWAITING_PLAN_APPROVAL|AWAITING_USER_FEEDBACK)
+    QUEUED|PLANNING|IN_PROGRESS|PAUSED)
       cutoff=$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)
       if [ "${ts:-}" \< "$cutoff" ]; then
         echo "reconcile: discussion #$num session $sid stuck in $st since $ts -> stuck"
@@ -51,6 +51,21 @@ for num in $(jq -r '.dispatched // {} | to_entries[]
       else
         echo "reconcile: discussion #$num session $sid still $st"
       fi
+      ;;
+    AWAITING_USER_FEEDBACK)
+      nudges=$(jq -r --arg n "$num" '.dispatched[$n].nudges // 0' <<<"$state")
+      if [ "$nudges" -lt 3 ]; then
+        jules_send_message "$sid" .jules-loop/scripts/nudge.txt >/dev/null \
+          && echo "reconcile: discussion #$num session $sid was waiting for feedback -> nudged ($((nudges + 1))/3)"
+        state=$(jq -c --arg n "$num" --argjson c "$((nudges + 1))" '.dispatched[$n].nudges = $c' <<<"$state")
+      else
+        echo "reconcile: discussion #$num session $sid asked again after 3 nudges -> stuck"
+        state=$(jq -c --arg n "$num" '.dispatched[$n].status = "stuck"' <<<"$state")
+      fi
+      ;;
+    AWAITING_PLAN_APPROVAL)
+      jules_approve_plan "$sid" >/dev/null \
+        && echo "reconcile: discussion #$num session $sid plan approved automatically"
       ;;
     *)
       echo "reconcile: discussion #$num session $sid state $st (left as-is)"

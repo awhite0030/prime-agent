@@ -1,0 +1,1 @@
+Do not wait for replies and do not ask questions. Proceed with the best available interpretation right now, document any assumptions in the final summary, and bring the session to completion. If the bug cannot be reproduced or the report is stale, finish with a summary saying so without changing code.

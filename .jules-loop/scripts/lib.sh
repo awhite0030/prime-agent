@@ -66,3 +66,22 @@ jules_create_session() {
     -H "Content-Type: application/json" \
     --data-binary "@$1"
 }
+
+# Send a message to a session (also resumes it when awaiting user feedback).
+# $1 = session id, $2 = text file with the message.
+jules_send_message() {
+  local payload
+  payload=$(jq -n --rawfile p "$2" '{prompt: $p}')
+  curl -sS -X POST "${JULES_API}/sessions/$1:sendMessage" \
+    -H "X-Goog-Api-Key: ${JULES_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "$payload"
+}
+
+# Approve the current plan of a session.
+jules_approve_plan() {
+  curl -sS -X POST "${JULES_API}/sessions/$1:approvePlan" \
+    -H "X-Goog-Api-Key: ${JULES_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+}
