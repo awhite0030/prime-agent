@@ -14,7 +14,7 @@ disc_num=$(printf '%s' "$pr_body" | grep -oE 'discussions/[0-9]+' | head -1 | gr
 log_tail=$(gh run view "${GITHUB_RUN_ID:-}" --log-failed 2>/dev/null | tail -60 || true)
 [ -n "$log_tail" ] || log_tail="See the run logs for details."
 
-comment=$(jq -n --arg log "$log_tail" --arg pr "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID:-}" '
+comment=$(jq -rn --arg log "$log_tail" --arg pr "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID:-}" '
   "Automated validation failed, so this fix was not merged and nothing was posted upstream.\n\n"
   + "Failed step log (tail):\n\n~~~~\n" + $log + "\n~~~~\n\n"
   + "Run: " + $pr')

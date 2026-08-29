@@ -31,7 +31,7 @@ jq -r '.body // ""' <<<"$pr_json" > "$pr_body_file"
 disc_num=$(grep -oE 'discussions/[0-9]+' "$pr_body_file" | head -1 | grep -oE '[0-9]+' || true)
 
 # --- Build the upstream comment draft ------------------------------------------
-draft=$(jq -n --rawfile body "$pr_body_file" \
+draft=$(jq -rn --rawfile body "$pr_body_file" \
   --arg cmp "https://github.com/${GITHUB_REPOSITORY}/compare/main...${head_branch}" \
   --arg pr "https://github.com/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}" '
   ($body | gsub("\r$"; "") | if length > 4000 then .[0:4000] + "\n..." else . end
