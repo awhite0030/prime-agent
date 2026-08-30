@@ -56,11 +56,27 @@ describe("MCP management commands", () => {
 			["remote", "--url", "file:///tmp/server"],
 			["remote", "--url", "https://user:secret@example.com/mcp"],
 			["remote", "--url", "https://example.com", "--oauth", "--bearer-token-env-var", "TOKEN"],
+			["remote", "--url", "https://example.com", "--client-id", "some-id"],
 			["local", "--env", "TOKEN=literal-value", "--", "node"],
 			["local", "--"],
 		] as string[][]) {
 			expect(() => parseMcpAddArgs(args)).toThrow();
 		}
+	});
+
+	it("parses --client-id correctly when used with --oauth", () => {
+		expect(
+			parseMcpAddArgs(["remote", "--url", "https://example.com/mcp", "--oauth", "--client-id", "public-client"]),
+		).toEqual({
+			name: "remote",
+			force: false,
+			config: {
+				type: "http",
+				url: "https://example.com/mcp",
+				oauth: true,
+				clientId: "public-client",
+			},
+		});
 	});
 
 	it("shows only the server name and transport at the public output boundary", () => {
