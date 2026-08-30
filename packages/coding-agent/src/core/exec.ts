@@ -20,6 +20,8 @@ export interface ExecOptions {
 	 * A key with an undefined value is unset in the child.
 	 */
 	env?: Record<string, string | undefined>;
+	/** Max buffer size in bytes for stdout/stderr (default: 1MB) */
+	maxBuffer?: number;
 }
 
 /**
@@ -30,6 +32,7 @@ export interface ExecResult {
 	stderr: string;
 	code: number;
 	killed: boolean;
+	truncated?: boolean;
 }
 
 function mergeExecEnv(env?: Record<string, string | undefined>): NodeJS.ProcessEnv | undefined {
@@ -67,8 +70,13 @@ export async function execCommand(
 			env: mergeExecEnv(options?.env),
 		});
 
-		let stdout = "";
-		let stderr = "";
+		const stdoutChunks: Buffer[] = [];
+		let stdoutBytes = 0;
+		const stderrChunks: Buffer[] = [];
+		let stderrBytes = 0;
+		let truncated = false;
+		const maxBuffer = options?.maxBuffer ?? 1024 * 1024; // 1MB default
+
 		let killed = false;
 		let timeoutId: NodeJS.Timeout | undefined;
 		let forceKillTimeoutId: NodeJS.Timeout | undefined;
@@ -100,12 +108,40 @@ export async function execCommand(
 			}, options.timeout);
 		}
 
-		proc.stdout?.on("data", (data) => {
-			stdout += data.toString();
+		proc.stdout?.on("data", (data: Buffer) => {
+			stdoutChunks.push(data);
+			stdoutBytes += data.length;
+			while (stdoutBytes > maxBuffer && stdoutChunks.length > 1) {
+				const removed = stdoutChunks.shift()!;
+				stdoutBytes -= removed.length;
+				truncated = true;
+			}
+			// If a single huge chunk arrives and we haven't truncated it by shifting, slice it
+			if (stdoutBytes > maxBuffer && stdoutChunks.length === 1) {
+				const chunk = stdoutChunks[0];
+				const over = stdoutBytes - maxBuffer;
+				stdoutChunks[0] = chunk.subarray(over);
+				stdoutBytes = maxBuffer;
+				truncated = true;
+			}
 		});
 
-		proc.stderr?.on("data", (data) => {
-			stderr += data.toString();
+		proc.stderr?.on("data", (data: Buffer) => {
+			stderrChunks.push(data);
+			stderrBytes += data.length;
+			while (stderrBytes > maxBuffer && stderrChunks.length > 1) {
+				const removed = stderrChunks.shift()!;
+				stderrBytes -= removed.length;
+				truncated = true;
+			}
+			// If a single huge chunk arrives and we haven't truncated it by shifting, slice it
+			if (stderrBytes > maxBuffer && stderrChunks.length === 1) {
+				const chunk = stderrChunks[0];
+				const over = stderrBytes - maxBuffer;
+				stderrChunks[0] = chunk.subarray(over);
+				stderrBytes = maxBuffer;
+				truncated = true;
+			}
 		});
 
 		const cleanup = () => {
@@ -121,11 +157,15 @@ export async function execCommand(
 		waitForChildProcess(proc)
 			.then((code) => {
 				cleanup();
-				resolve({ stdout, stderr, code: code ?? 0, killed });
+				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+				const stderr = Buffer.concat(stderrChunks).toString("utf8");
+				resolve({ stdout, stderr, code: code ?? 0, killed, truncated });
 			})
 			.catch((_err) => {
 				cleanup();
-				resolve({ stdout, stderr, code: 1, killed });
+				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+				const stderr = Buffer.concat(stderrChunks).toString("utf8");
+				resolve({ stdout, stderr, code: 1, killed, truncated });
 			});
 	});
 }
