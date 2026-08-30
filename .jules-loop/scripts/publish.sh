@@ -26,7 +26,14 @@ query_file=$(mktemp)
 vars_file=$(mktemp)
 trap 'rm -f "$pr_body_file" "$draft_file" "$query_file" "$vars_file"' EXIT
 
-jq -r '.body // ""' <<<"$pr_json" > "$pr_body_file"
+jq -r '.body // ""' <<<"$pr_json" \
+  | jq -r -s -R 'split("\n")
+      | map(select(
+          (test("created automatically by Jules"; "i") | not)
+          and (test("jules[.]google[.]com/task") | not)
+          and (test("^---\\s*$") | not)))
+      | join("\n")' \
+  | sed '/^$/N;/^\n$/D' > "$pr_body_file"
 
 disc_num=$(grep -oE 'discussions/[0-9]+' "$pr_body_file" | head -1 | grep -oE '[0-9]+' || true)
 
