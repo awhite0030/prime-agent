@@ -133,6 +133,9 @@ export class McpManager {
 						server: integration.server,
 						label: integration.label,
 						url: integration.config.url,
+						...("clientId" in integration.config && integration.config.clientId
+							? { clientId: integration.config.clientId }
+							: {}),
 					}),
 				);
 			}

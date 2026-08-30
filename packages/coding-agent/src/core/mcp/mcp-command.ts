@@ -102,6 +102,7 @@ export function parseMcpAddArgs(args: readonly string[]): {
 	let url: string | undefined;
 	let bearerTokenEnvVar: string | undefined;
 	let oauth = false;
+	let clientId: string | undefined;
 	let force = false;
 	let cwd: string | undefined;
 	const env: Record<string, { env: string }> = Object.create(null);
@@ -116,13 +117,20 @@ export function parseMcpAddArgs(args: readonly string[]): {
 			else force = true;
 			continue;
 		}
-		if (option !== "--url" && option !== "--bearer-token-env-var" && option !== "--cwd" && option !== "--env") {
+		if (
+			option !== "--url" &&
+			option !== "--bearer-token-env-var" &&
+			option !== "--client-id" &&
+			option !== "--cwd" &&
+			option !== "--env"
+		) {
 			throw new Error(`Unknown MCP add option: ${option}`);
 		}
 		const value = optionArgs[++index];
 		if (value === undefined || value === "") throw new Error(`${option} requires a value.`);
 		if (option === "--url") url = value;
 		else if (option === "--bearer-token-env-var") bearerTokenEnvVar = validateEnvName(value, option);
+		else if (option === "--client-id") clientId = value;
 		else if (option === "--cwd") cwd = value;
 		else {
 			const equals = value.indexOf("=");
@@ -137,7 +145,7 @@ export function parseMcpAddArgs(args: readonly string[]): {
 	}
 
 	if (separator !== -1) {
-		if (url || bearerTokenEnvVar || oauth) throw new Error("Stdio MCP servers cannot use HTTP options.");
+		if (url || bearerTokenEnvVar || oauth || clientId) throw new Error("Stdio MCP servers cannot use HTTP options.");
 		if (commandArgs.length === 0 || !commandArgs[0]?.trim()) {
 			throw new Error("A command is required after --.");
 		}
@@ -158,6 +166,7 @@ export function parseMcpAddArgs(args: readonly string[]): {
 	if (cwd || Object.keys(env).length > 0) throw new Error("--cwd and --env require a stdio command after --.");
 	if (!url) throw new Error("Use --url <url> for HTTP or -- <command> [args...] for stdio.");
 	if (bearerTokenEnvVar && oauth) throw new Error("--oauth and --bearer-token-env-var cannot be combined.");
+	if (clientId && !oauth) throw new Error("--client-id requires --oauth.");
 	return {
 		name,
 		force,
@@ -165,7 +174,7 @@ export function parseMcpAddArgs(args: readonly string[]): {
 			type: "http",
 			url: validateHttpUrl(url),
 			...(bearerTokenEnvVar ? { bearerTokenEnvVar } : {}),
-			...(oauth ? { oauth: true } : {}),
+			...(oauth ? { oauth: true, ...(clientId ? { clientId } : {}) } : {}),
 		},
 	};
 }
