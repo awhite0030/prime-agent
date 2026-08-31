@@ -292,6 +292,37 @@ export function normalizeOutliers(models: Model<any>[]) {
 	}
 
 	for (const [canonicalId, group] of canonicalGroups) {
+		if (group.length < 2) continue;
+
+		// Merge thinkingLevelMap across models with the same API type within the canonical group
+		const apiGroups = new Map<string, Model<any>[]>();
+		for (const model of group) {
+			if (!apiGroups.has(model.api)) {
+				apiGroups.set(model.api, []);
+			}
+			apiGroups.get(model.api)!.push(model);
+		}
+
+		for (const [api, apiGroup] of apiGroups) {
+			if (apiGroup.length < 2) continue;
+
+			// Check if any model in the API group has a thinkingLevelMap
+			const maps = apiGroup.map(m => m.thinkingLevelMap).filter(Boolean);
+			if (maps.length > 0) {
+				// Prefer the most restrictive / explicit map, or merge them.
+				// Since maps just set string or null, Object.assign is usually sufficient.
+				const mergedMap = maps.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+				for (const model of apiGroup) {
+					if (!model.thinkingLevelMap) {
+						model.thinkingLevelMap = { ...mergedMap };
+					} else {
+						model.thinkingLevelMap = { ...mergedMap, ...model.thinkingLevelMap };
+					}
+				}
+			}
+		}
+
+		// (Original outlier logic continues)
 		if (group.length < 3) continue;
 
 		const contexts = group.map(m => m.contextWindow).filter(v => v > 0).sort((a, b) => a - b);
