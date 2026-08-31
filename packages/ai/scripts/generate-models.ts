@@ -280,6 +280,43 @@ function isGemma4Model(modelId: string): boolean {
 	return /gemma-?4/.test(modelId.toLowerCase());
 }
 
+export function normalizeOutliers(models: Model<any>[]) {
+	// Normalize cross-provider outliers
+	const canonicalGroups = new Map<string, Model<any>[]>();
+	for (const model of models) {
+		const canonicalId = model.id.split("/").pop() || model.id;
+		if (!canonicalGroups.has(canonicalId)) {
+			canonicalGroups.set(canonicalId, []);
+		}
+		canonicalGroups.get(canonicalId)!.push(model);
+	}
+
+	for (const [canonicalId, group] of canonicalGroups) {
+		if (group.length < 3) continue;
+
+		const contexts = group.map(m => m.contextWindow).filter(v => v > 0).sort((a, b) => a - b);
+		const maxTokensList = group.map(m => m.maxTokens).filter(v => v > 0).sort((a, b) => a - b);
+
+		const medianContext = contexts.length > 0 ? contexts[Math.floor(contexts.length / 2)] : 0;
+		const medianMaxTokens = maxTokensList.length > 0 ? maxTokensList[Math.floor(maxTokensList.length / 2)] : 0;
+
+		for (const model of group) {
+			if (medianContext > 0 && model.contextWindow > 0) {
+				if (model.contextWindow < medianContext / 4 || model.contextWindow > medianContext * 4) {
+					console.log(`[Outlier] Overriding contextWindow for ${model.provider}:${model.id} from ${model.contextWindow} to median ${medianContext}`);
+					model.contextWindow = medianContext;
+				}
+			}
+			if (medianMaxTokens > 0 && model.maxTokens > 0) {
+				if (model.maxTokens < medianMaxTokens / 4 || model.maxTokens > medianMaxTokens * 4) {
+					console.log(`[Outlier] Overriding maxTokens for ${model.provider}:${model.id} from ${model.maxTokens} to median ${medianMaxTokens}`);
+					model.maxTokens = medianMaxTokens;
+				}
+			}
+		}
+	}
+}
+
 function applyThinkingLevelMetadata(model: Model<any>): void {
 	if (
 		(model.api === "openai-responses" || model.api === "azure-openai-responses") &&
@@ -563,11 +600,11 @@ function getPrimeInferenceCompat(modelId: string): OpenAICompletionsCompat {
 }
 
 function parsePrimeInferenceCatalog(data: unknown): PrimeInferenceCatalogEntry[] {
-	if (!isRecord(data) || !Array.isArray(data.data)) {
+	if (!isRecord(data) || !Array.isArray((data as any).data)) {
 		return [];
 	}
 
-	return data.data.flatMap((item): PrimeInferenceCatalogEntry[] => {
+	return (data as any).data.flatMap((item: any): PrimeInferenceCatalogEntry[] => {
 		if (!isRecord(item) || typeof item.id !== "string") {
 			return [];
 		}
@@ -743,8 +780,8 @@ function fetchOpenRouterCatalog(): Promise<any[]> {
 	openRouterCatalogPromise ??= (async () => {
 		console.log("Fetching models from OpenRouter API...");
 		const response = await fetch("https://openrouter.ai/api/v1/models");
-		const data = await response.json();
-		return Array.isArray(data?.data) ? data.data : [];
+		const data = await response.json() as any;
+		return Array.isArray(data?.data) ? (data as any).data : [];
 	})();
 	return openRouterCatalogPromise;
 }
@@ -817,7 +854,7 @@ async function fetchAiGatewayModels(): Promise<Model<any>[]> {
 	try {
 		console.log("Fetching models from Vercel AI Gateway API...");
 		const response = await fetch(`${AI_GATEWAY_MODELS_URL}/models`);
-		const data = await response.json();
+		const data = await response.json() as any;
 		const models: Model<any>[] = [];
 
 		const toNumber = (value: string | number | undefined): number => {
@@ -828,7 +865,7 @@ async function fetchAiGatewayModels(): Promise<Model<any>[]> {
 			return Number.isFinite(parsed) ? parsed : 0;
 		};
 
-		const items = Array.isArray(data.data) ? (data.data as AiGatewayModel[]) : [];
+		const items = Array.isArray((data as any).data) ? ((data as any).data as AiGatewayModel[]) : [];
 		for (const model of items) {
 			const tags = Array.isArray(model.tags) ? model.tags : [];
 			// Only include models that support tools
@@ -876,13 +913,13 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 	try {
 		console.log("Fetching models from models.dev API...");
 		const response = await fetch("https://models.dev/api.json");
-		const data = await response.json();
+		const data = await response.json() as any;
 
 		const models: Model<any>[] = [];
 
 		// Process Amazon Bedrock models
-		if (data["amazon-bedrock"]?.models) {
-			for (const [modelId, model] of Object.entries(data["amazon-bedrock"].models)) {
+		if ((data as any)["amazon-bedrock"]?.models) {
+			for (const [modelId, model] of Object.entries((data as any)["amazon-bedrock"].models)) {
 				const m = model as ModelsDevModel;
 				if (m.tool_call !== true) continue;
 
@@ -2357,6 +2394,8 @@ async function generateModels() {
 	for (const model of allModels) {
 		applyThinkingLevelMetadata(model);
 	}
+
+	normalizeOutliers(allModels);
 
 	// Group by provider and deduplicate by model ID
 	const providers: Record<string, Record<string, Model<any>>> = {};
