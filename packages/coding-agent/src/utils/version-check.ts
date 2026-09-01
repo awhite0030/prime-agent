@@ -82,6 +82,9 @@ export function isNewerPackageVersion(candidateVersion: string, currentVersion: 
 	if (comparison !== undefined) {
 		return comparison > 0;
 	}
+	if (!parsePackageVersion(currentVersion)) {
+		return false;
+	}
 	return candidateVersion.trim() !== currentVersion.trim();
 }
 
