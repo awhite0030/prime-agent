@@ -1,6 +1,10 @@
 interface StdoutTakeoverState {
-	rawStdoutWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
-	rawStderrWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
+	rawStdoutWrite: (chunk: string | Uint8Array, callback?: (error?: Error | null) => void) => boolean;
+	rawStderrWrite: (
+		chunk: string | Uint8Array,
+		encoding?: BufferEncoding,
+		callback?: (error?: Error | null) => void,
+	) => boolean;
 	originalStdoutWrite: typeof process.stdout.write;
 }
 
@@ -21,9 +25,9 @@ export function takeOverStdout(): void {
 		callback?: (error?: Error | null) => void,
 	): boolean => {
 		if (typeof encodingOrCallback === "function") {
-			return rawStderrWrite(String(chunk), encodingOrCallback);
+			return rawStderrWrite(chunk, undefined, encodingOrCallback);
 		}
-		return rawStderrWrite(String(chunk), callback);
+		return rawStderrWrite(chunk, encodingOrCallback as BufferEncoding | undefined, callback);
 	}) as typeof process.stdout.write;
 
 	stdoutTakeoverState = {
@@ -46,7 +50,7 @@ export function isStdoutTakenOver(): boolean {
 	return stdoutTakeoverState !== undefined;
 }
 
-export function writeRawStdout(text: string): void {
+export function writeRawStdout(text: string | Uint8Array): void {
 	if (stdoutTakeoverState) {
 		stdoutTakeoverState.rawStdoutWrite(text);
 		return;
