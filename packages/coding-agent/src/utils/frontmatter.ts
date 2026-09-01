@@ -14,14 +14,17 @@ const extractFrontmatter = (content: string): { yamlString: string | null; body:
 		return { yamlString: null, body: normalized };
 	}
 
-	const endIndex = normalized.indexOf("\n---", 3);
-	if (endIndex === -1) {
+	const regex = /^---[ \t]*$/gm;
+	regex.lastIndex = 3;
+	const match = regex.exec(normalized);
+	if (!match) {
 		return { yamlString: null, body: normalized };
 	}
 
+	const endIndex = match.index;
 	return {
-		yamlString: normalized.slice(4, endIndex),
-		body: normalized.slice(endIndex + 4).trim(),
+		yamlString: normalized.slice(4, endIndex > 0 && normalized[endIndex - 1] === "\n" ? endIndex - 1 : endIndex),
+		body: normalized.slice(endIndex + match[0].length).trim(),
 	};
 };
 
