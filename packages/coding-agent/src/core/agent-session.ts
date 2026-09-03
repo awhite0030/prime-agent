@@ -3756,6 +3756,7 @@ export class AgentSession {
 					}
 				}
 			}
+			this._scheduleSessionInputPump();
 		}
 	}
 
