@@ -695,6 +695,13 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 					if (event.usage.cache_creation_input_tokens != null) {
 						output.usage.cacheWrite = event.usage.cache_creation_input_tokens;
 					}
+					if (cacheControl && usesAnthropicCachePricing && "cache_creation" in event.usage) {
+						cacheWriteCost = getAnthropicCacheWriteCost(
+							model.cost.input,
+							cacheControl.ttl === "1h" ? "1h" : "5m",
+							(event.usage as any).cache_creation,
+						);
+					}
 					output.usage.totalTokens =
 						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
 					calculateCost(
