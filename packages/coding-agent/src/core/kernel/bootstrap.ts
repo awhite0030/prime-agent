@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { constants, existsSync, readdirSync, readFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { constants, existsSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { access, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -436,7 +436,7 @@ function reportProgress(options: EnsureKernelPythonOptions, message: string): vo
 	process.stderr.write(`${message}\n`);
 }
 
-function bootstrapLockDir(venv: string): string {
+export function bootstrapLockDir(venv: string): string {
 	return path.join(path.dirname(venv), `${path.basename(venv)}${BOOTSTRAP_LOCK_NAME}`);
 }
 
@@ -468,21 +468,36 @@ async function lockMissingPidIsStale(lockDir: string): Promise<boolean> {
 	}
 }
 
-async function acquireBootstrapLock(venv: string): Promise<() => Promise<void>> {
+export async function acquireBootstrapLock(venv: string): Promise<() => Promise<void>> {
 	const lockDir = bootstrapLockDir(venv);
 	await mkdir(path.dirname(lockDir), { recursive: true });
 
 	for (;;) {
+		const token = randomUUID();
+		const candidateDir = `${lockDir}.candidate-${process.pid}-${token}`;
+
 		try {
-			await mkdir(lockDir);
-			await writeFile(path.join(lockDir, "pid"), `${process.pid}\n`, "utf8");
-			return () => rm(lockDir, { recursive: true, force: true });
+			await mkdir(candidateDir, { mode: 0o700 });
+			await writeFile(path.join(candidateDir, "pid"), `${process.pid}\n`, { mode: 0o600 });
+			renameSync(candidateDir, lockDir);
+			return () => rm(lockDir, { recursive: true, force: true }).catch(() => {});
 		} catch (error) {
-			if (!isNodeError(error, "EEXIST")) throw error;
+			await rm(candidateDir, { recursive: true, force: true }).catch(() => {});
+
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "EEXIST" && code !== "ENOTEMPTY" && code !== "EPERM") throw error;
 
 			const pid = await readLockPid(lockDir);
 			if (pid === null ? await lockMissingPidIsStale(lockDir) : !processIsRunning(pid)) {
-				await rm(lockDir, { recursive: true, force: true });
+				const staleDir = `${lockDir}.stale-${process.pid}-${token}`;
+				try {
+					renameSync(lockDir, staleDir);
+					await rm(staleDir, { recursive: true, force: true });
+				} catch (reclaimError) {
+					if ((reclaimError as NodeJS.ErrnoException).code !== "ENOENT") {
+						throw reclaimError;
+					}
+				}
 				continue;
 			}
 
