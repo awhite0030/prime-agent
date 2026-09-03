@@ -358,8 +358,9 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 		} else if (event.type === "response.output_text.delta") {
 			if (currentItem?.type === "message" && currentBlock?.type === "text") {
-				if (!currentItem.content || currentItem.content.length === 0) {
-					continue;
+				currentItem.content = currentItem.content || [];
+				if (currentItem.content.length === 0) {
+					currentItem.content.push({ type: "output_text", text: "", annotations: [] } as any);
 				}
 				const lastPart = currentItem.content[currentItem.content.length - 1];
 				if (lastPart?.type === "output_text") {
@@ -375,8 +376,9 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 		} else if (event.type === "response.refusal.delta") {
 			if (currentItem?.type === "message" && currentBlock?.type === "text") {
-				if (!currentItem.content || currentItem.content.length === 0) {
-					continue;
+				currentItem.content = currentItem.content || [];
+				if (currentItem.content.length === 0) {
+					currentItem.content.push({ type: "refusal", refusal: "" });
 				}
 				const lastPart = currentItem.content[currentItem.content.length - 1];
 				if (lastPart?.type === "refusal") {
