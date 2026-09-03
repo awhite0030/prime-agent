@@ -514,6 +514,7 @@ async function* parseSSE(response: Response): AsyncGenerator<Record<string, unkn
 			const { done, value } = await reader.read();
 			if (done) break;
 			buffer += decoder.decode(value, { stream: true });
+			buffer = buffer.replace(/\r\n/g, "\n");
 
 			let idx = buffer.indexOf("\n\n");
 			while (idx !== -1) {
@@ -524,8 +525,7 @@ async function* parseSSE(response: Response): AsyncGenerator<Record<string, unkn
 					.split("\n")
 					.filter((l) => l.startsWith("data:"))
 					.map((l) => l.slice(5).trim());
-				if (dataLines.length > 0) {
-					const data = dataLines.join("\n").trim();
+				for (const data of dataLines) {
 					if (data && data !== "[DONE]") {
 						try {
 							yield JSON.parse(data) as Record<string, unknown>;
@@ -538,6 +538,27 @@ async function* parseSSE(response: Response): AsyncGenerator<Record<string, unkn
 					}
 				}
 				idx = buffer.indexOf("\n\n");
+			}
+		}
+
+		buffer += decoder.decode();
+		buffer = buffer.replace(/\r\n/g, "\n");
+		if (buffer.trim()) {
+			const dataLines = buffer
+				.split("\n")
+				.filter((l) => l.startsWith("data:"))
+				.map((l) => l.slice(5).trim());
+			for (const data of dataLines) {
+				if (data && data !== "[DONE]") {
+					try {
+						yield JSON.parse(data) as Record<string, unknown>;
+					} catch (cause) {
+						throw new CodexProtocolError(`Invalid Codex SSE JSON: ${formatThrownValue(cause)}`, {
+							cause,
+							payload: data,
+						});
+					}
+				}
 			}
 		}
 	} finally {
