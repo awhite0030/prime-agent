@@ -5360,7 +5360,9 @@ export class InteractiveMode {
 			case "setWidget": {
 				const key = getPayloadString(payload, "widgetKey");
 				if (key) {
-					const placement = getPayloadWidgetPlacement(payload, "widgetPlacement");
+					const placement =
+						getPayloadWidgetPlacement(request as unknown as Record<string, unknown>, "widgetPlacement") ||
+						getPayloadWidgetPlacement(payload, "widgetPlacement");
 					this.setExtensionWidget(
 						key,
 						getPayloadStringArray(payload, "widgetLines"),

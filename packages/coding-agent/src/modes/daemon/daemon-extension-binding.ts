@@ -214,8 +214,12 @@ function createExtensionUIContext(
 				});
 			}
 		},
-		setFooter: () => {},
-		setHeader: () => {},
+		setFooter: () => {
+			emitUiRequest("notify", { message: "setFooter is not supported via RPC", notifyType: "warning" });
+		},
+		setHeader: () => {
+			emitUiRequest("notify", { message: "setHeader is not supported via RPC", notifyType: "warning" });
+		},
 		setTitle: (title) => emitUiRequest("setTitle", { title }),
 		async custom<T>(): Promise<T> {
 			return undefined as T;
