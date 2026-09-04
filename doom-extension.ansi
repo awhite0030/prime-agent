@@ -1,0 +1,30 @@
+[38;2;113;113;122m    /app/packages/coding-agent/skills/agent-observe/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/attach-image/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/compact/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/edit/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/goal/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/prime-intellect/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/refine/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/rlm-heartbeat/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/skill-creator/SKILL.md[39m
+[38;2;113;113;122m    /app/packages/coding-agent/skills/websearch/SKILL.md[39m
+
+[38;2;141;127;192m[Extensions][39m
+  [38;2;124;111;175mpath[39m
+[38;2;113;113;122m    <inline:1>[39m
+
+
+ [38;2;245;158;11m⚠ tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to
+[39m [38;2;245;158;11m~/.tmux.conf and restart tmux.[39m
+
+[48;2;26;26;31m
+  [38;2;124;111;175m/goal[39m
+
+
+  No active goal.
+
+
+
+ >  [7m [0m[38;2;113;113;122m[48;2;26;26;31mTry "add tests for @<filepath>"[39m
+
+[38;2;113;113;122m[49m←[38;2;161;161;170m agents/resume[39m  unknown
