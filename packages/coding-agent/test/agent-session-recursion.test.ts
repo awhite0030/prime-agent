@@ -2507,8 +2507,81 @@ describe("AgentSession rlm recursion", () => {
 			const attributions = root.sessionManager
 				.getEntries()
 				.filter((entry) => entry.type === "child_usage_attributed");
-			expect(attributions).toHaveLength(2);
-			expect(attributions.map((entry) => entry.origin)).toEqual(["spawn_task", "spawn_task"]);
+			expect(attributions).toHaveLength(1);
+			expect(attributions.map((entry) => entry.origin)).toEqual(["spawn_task"]);
+			const combined = attributions[0] as any;
+			expect(combined.childUsage.input).toBe(3);
+			expect(combined.childUsage.output).toBe(3);
+		});
+	});
+
+	it("persists far fewer entries than turns for a chatty child while tracking exact total usage", async () => {
+		const tool = {
+			name: "echo",
+			description: "Echo a value",
+			label: "echo",
+			parameters: Type.Object({ value: Type.String() }),
+			execute: async (_toolCallId: string, params: { value: string }) => ({
+				content: [{ type: "text" as const, text: params.value }],
+				details: {},
+			}),
+		};
+		const TOTAL_TURNS = 20;
+		const root = createSession({
+			customTools: [tool],
+			streamFn: (_model, context) => {
+				const toolResultCount = context.messages.filter((message) => message.role === "toolResult").length;
+				const stream = createAssistantMessageEventStream();
+				queueMicrotask(() => {
+					const message =
+						toolResultCount < TOTAL_TURNS
+							? {
+									...assistantMessage("", usage(1, 1)),
+									content: [
+										{
+											type: "toolCall" as const,
+											id: `echo-${toolResultCount + 1}`,
+											name: "echo",
+											arguments: { value: "ok" },
+										},
+									],
+									stopReason: "toolUse" as const,
+								}
+							: assistantMessage("done", usage(1, 1));
+					stream.push({
+						type: "done",
+						reason: toolResultCount < TOTAL_TURNS ? "toolUse" : "stop",
+						message,
+					});
+				});
+				return stream;
+			},
+		});
+		const parentAssistant = assistantMessage("running ipython", usage(0, 0));
+		root.agent.state.messages.push(parentAssistant);
+		root.sessionManager.appendMessage(parentAssistant);
+
+		await root.runRlmChild("use a tool 20 times");
+
+		await vi.waitFor(() => {
+			const attributions = root.sessionManager
+				.getEntries()
+				.filter((entry) => entry.type === "child_usage_attributed") as any[];
+
+			// Must have at least 1, but far fewer than the 21 completions (20 tools + 1 final)
+			expect(attributions.length).toBeGreaterThan(0);
+			expect(attributions.length).toBeLessThan(10);
+
+			// The sum across all persisted entries must exactly match 21 turns
+			let totalInput = 0;
+			let totalOutput = 0;
+			for (const attr of attributions) {
+				totalInput += attr.childUsage.input;
+				totalOutput += attr.childUsage.output;
+			}
+			// 21 turns * 1 input/output token per turn
+			expect(totalInput).toBe(TOTAL_TURNS + 1);
+			expect(totalOutput).toBe(TOTAL_TURNS + 1);
 		});
 	});
 

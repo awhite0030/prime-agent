@@ -287,6 +287,8 @@ export type { GoalState, GoalStatus } from "./goals.js";
 export type { SessionStats } from "./session-stats.js";
 export { type ParsedSkillBlock, parseSkillBlock } from "./skill-blocks.js";
 
+const RLM_CHILD_USAGE_ATTRIBUTION_COALESCE_MS = 1000;
+
 export type RlmChildAgentStatus = "queued" | "running" | "done" | "error" | "cancelled";
 
 export interface RlmChildAgentActivity {
@@ -926,6 +928,9 @@ interface RlmChildRun {
 	emitUpdate?: () => void;
 	lastEmittedUpdate?: string;
 	unsubscribe?: () => void;
+	pendingUsageDelta?: Usage;
+	pendingUsageOrigin?: string;
+	usageAttributionTimeout?: ReturnType<typeof setTimeout>;
 }
 
 interface RetainedRlmChild {
@@ -10658,6 +10663,30 @@ export class AgentSession {
 		run.emitUpdate = emitChildUpdate;
 		emitChildUpdate();
 
+		const flushUsageAttribution = () => {
+			if (run.usageAttributionTimeout) {
+				clearTimeout(run.usageAttributionTimeout);
+				run.usageAttributionTimeout = undefined;
+			}
+			if (run.pendingUsageDelta && run.pendingUsageOrigin) {
+				const delta = run.pendingUsageDelta;
+				const origin = run.pendingUsageOrigin;
+				run.pendingUsageDelta = undefined;
+				run.pendingUsageOrigin = undefined;
+				if (parentAssistantForUsage) {
+					const parentEntry = this._findAssistantEntryForMessage(parentAssistantForUsage);
+					if (parentEntry) {
+						this.sessionManager.appendChildUsageAttribution(
+							parentEntry.id,
+							delta,
+							parentAssistantForUsage.usage,
+							origin as any,
+						);
+					}
+				}
+			}
+		};
+
 		const publishChildSession = (child: AgentSession) => {
 			childSession = child;
 			if (this._activeRlmChildRuns.get(run.id) !== run) return;
@@ -10761,11 +10790,19 @@ export class AgentSession {
 												? "spawn_task"
 												: "agent_message"
 											: "direct_user";
-									this.sessionManager.appendChildUsageAttribution(
-										parentEntry.id,
-										assistant.usage,
-										parentAssistantForUsage.usage,
-										origin,
+
+									if (!run.pendingUsageDelta) {
+										run.pendingUsageDelta = emptyUsage();
+									}
+									addAssistantUsage(run.pendingUsageDelta, assistant.usage);
+									run.pendingUsageOrigin = origin;
+
+									if (run.usageAttributionTimeout) {
+										clearTimeout(run.usageAttributionTimeout);
+									}
+									run.usageAttributionTimeout = setTimeout(
+										flushUsageAttribution,
+										RLM_CHILD_USAGE_ATTRIBUTION_COALESCE_MS,
 									);
 								}
 							}
@@ -10929,6 +10966,7 @@ export class AgentSession {
 					}
 				}
 			} finally {
+				flushUsageAttribution();
 				if (run.detachedDeletion) {
 					run.deletionRunFinished = true;
 					if (!run.settled) {
