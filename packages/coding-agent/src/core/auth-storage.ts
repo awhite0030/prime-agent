@@ -797,7 +797,12 @@ export class AuthStorage {
 			return null;
 		}
 
-		const result = await this.storage.withLockAsync(async (current) => {
+		type PreRefreshResult =
+			| null
+			| { success: true; result: { apiKey: string; newCredentials: OAuthCredentials } }
+			| { success: false; oauthCreds: Record<string, OAuthCredentials>; oldCred: OAuthCredential };
+
+		const preRefreshState = await this.storage.withLockAsync<PreRefreshResult>(async (current) => {
 			const currentData = this.parseStorageData(current);
 			this.data = currentData;
 			this.loadError = null;
@@ -808,7 +813,9 @@ export class AuthStorage {
 			}
 
 			if (Date.now() < cred.expires) {
-				return { result: { apiKey: provider.getApiKey(cred), newCredentials: cred } };
+				return {
+					result: { success: true, result: { apiKey: provider.getApiKey(cred), newCredentials: cred } },
+				};
 			}
 
 			const oauthCreds: Record<string, OAuthCredentials> = {};
@@ -818,9 +825,39 @@ export class AuthStorage {
 				}
 			}
 
-			const refreshed = await getOAuthApiKey(providerId, oauthCreds);
-			if (!refreshed) {
+			return { result: { success: false, oauthCreds, oldCred: cred } };
+		});
+
+		if (preRefreshState === null) {
+			return null;
+		}
+
+		if (preRefreshState.success) {
+			return preRefreshState.result;
+		}
+
+		const { oauthCreds, oldCred } = preRefreshState;
+
+		const refreshed = await getOAuthApiKey(providerId, oauthCreds);
+		if (!refreshed) {
+			return null;
+		}
+
+		const postRefreshState = await this.storage.withLockAsync(async (current) => {
+			const currentData = this.parseStorageData(current);
+			const latestCred = currentData[providerId];
+
+			// If the token was removed or is no longer oauth, abort
+			if (latestCred?.type !== "oauth") {
 				return { result: null };
+			}
+
+			// If another process refreshed the token while we were making the network call,
+			// keep their changes and drop ours.
+			if (latestCred.refresh !== oldCred.refresh) {
+				this.data = currentData;
+				this.loadError = null;
+				return { result: { apiKey: provider.getApiKey(latestCred), newCredentials: latestCred } };
 			}
 
 			const merged: AuthStorageData = {
@@ -832,7 +869,7 @@ export class AuthStorage {
 			return { result: refreshed, next: JSON.stringify(merged, null, 2) };
 		});
 
-		return result;
+		return postRefreshState;
 	}
 
 	/**
