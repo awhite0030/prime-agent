@@ -539,6 +539,7 @@ export interface AgentConnectionExtensionUiRequest {
 	id: string;
 	method: string;
 	payload: Record<string, unknown>;
+	widgetPlacement?: "aboveEditor" | "belowEditor";
 }
 
 export type AgentConnectionRlmChildAgentStatus = "queued" | "running" | "done" | "error" | "cancelled";

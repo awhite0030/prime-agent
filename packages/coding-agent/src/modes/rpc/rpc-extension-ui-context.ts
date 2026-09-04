@@ -105,8 +105,12 @@ export function createRpcExtensionUiBridge(output: (request: RpcExtensionUIReque
 				});
 			}
 		},
-		setFooter: (_factory: unknown) => {},
-		setHeader: (_factory: unknown) => {},
+		setFooter: (_factory: unknown) => {
+			fireAndForget({ method: "notify", message: "setFooter is not supported in RPC mode", notifyType: "warning" });
+		},
+		setHeader: (_factory: unknown) => {
+			fireAndForget({ method: "notify", message: "setHeader is not supported in RPC mode", notifyType: "warning" });
+		},
 		setTitle: (title) => fireAndForget({ method: "setTitle", title }),
 		custom: async () => undefined as never,
 		pasteToEditor(text) {
