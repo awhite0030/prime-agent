@@ -448,6 +448,59 @@ describe("AgentsViewMode", () => {
 		runView.mockRestore();
 	});
 
+	it("throttles progressive saved-session updates within a 100ms window", async () => {
+		vi.useFakeTimers();
+
+		let streamSession!: (session: unknown) => void;
+		const request = vi.fn(async (command, _timeout, options) => {
+			if (command.type === "list_saved_sessions") {
+				streamSession = (session) => {
+					options?.onProgress?.({ type: "saved_session", session });
+				};
+				return new Promise(() => {}); // never resolves to keep streaming open
+			}
+			return { success: true, data: {} };
+		});
+
+		const persistentState: AgentsViewPersistentState = {};
+		const self: Record<string, unknown> = {
+			options: { config: { cwd: "/tmp" } },
+			persistentState,
+			savedCatalogGeneration: 0,
+			savedCatalogReady: true,
+			savedCatalogRefreshPending: false,
+			lastSuccessfulSavedSessions: [],
+			savedSessions: [],
+			requireClient: () => ({ request, supportsServerCapability: () => true }),
+			getSavedSessionCatalogContext: () => ({ cwd: "/tmp" }),
+			reconcileCatalogs: vi.fn(),
+			resolveMissingSelectionAnchor: vi.fn(),
+		};
+
+		const _refresh = invoke("refreshSavedSessions", self);
+		await vi.waitFor(() => expect(streamSession).toBeDefined());
+
+		// Stream 3 items synchronously
+		streamSession({ path: "/tmp/s1" });
+		streamSession({ path: "/tmp/s2" });
+		streamSession({ path: "/tmp/s3" });
+
+		expect(self.reconcileCatalogs).not.toHaveBeenCalled();
+
+		// Advance past the 100ms throttle
+		vi.advanceTimersByTime(110);
+		expect(self.reconcileCatalogs).toHaveBeenCalledTimes(1);
+
+		// Stream another item
+		streamSession({ path: "/tmp/s4" });
+		expect(self.reconcileCatalogs).toHaveBeenCalledTimes(1);
+
+		vi.advanceTimersByTime(110);
+		expect(self.reconcileCatalogs).toHaveBeenCalledTimes(2);
+
+		vi.useRealTimers();
+	});
+
 	it("does not discard scope while the saved-session refresh is in flight", async () => {
 		let finishRefresh: ((value: { success: true; data: { sessions: unknown[] } }) => void) | undefined;
 		const request = vi.fn(

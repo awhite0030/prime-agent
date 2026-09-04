@@ -672,6 +672,7 @@ export class AgentsViewMode implements Component, Focusable {
 	private savedCatalogGeneration = 0;
 	private heartbeatCatalogGeneration = 0;
 	private savedCatalogRefreshPending = false;
+	private savedCatalogProgressiveTimer: ReturnType<typeof setTimeout> | undefined;
 	private expandedSubagentParents = new Set<string>();
 	// Agent row identities whose full spawn program is currently shown.
 	// The program key toggles each agent shown ↔ hidden.
@@ -2204,9 +2205,15 @@ export class AgentsViewMode implements Component, Focusable {
 			const onSession = (session: AgentConnectionSavedSessionInfo) => {
 				if (generation !== this.savedCatalogGeneration) return;
 				progressiveSessions.set(resolvePath(canonicalizePath(session.path)), session);
-				this.savedSessions = [...progressiveSessions.values()];
-				this.persistentState.savedSessions = this.savedSessions;
-				this.reconcileCatalogs();
+				if (!this.savedCatalogProgressiveTimer) {
+					this.savedCatalogProgressiveTimer = setTimeout(() => {
+						this.savedCatalogProgressiveTimer = undefined;
+						if (generation !== this.savedCatalogGeneration) return;
+						this.savedSessions = [...progressiveSessions.values()];
+						this.persistentState.savedSessions = this.savedSessions;
+						this.reconcileCatalogs();
+					}, 100);
+				}
 			};
 			const sessions = await listDaemonSavedSessions(
 				this.requireClient(),
@@ -2239,6 +2246,10 @@ export class AgentsViewMode implements Component, Focusable {
 			}
 			return false;
 		} finally {
+			if (this.savedCatalogProgressiveTimer) {
+				clearTimeout(this.savedCatalogProgressiveTimer);
+				this.savedCatalogProgressiveTimer = undefined;
+			}
 			if (generation === this.savedCatalogGeneration) {
 				this.savedCatalogRefreshPending = false;
 				this.resolveMissingSelectionAnchor();
