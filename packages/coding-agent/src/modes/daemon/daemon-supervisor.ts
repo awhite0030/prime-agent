@@ -6686,7 +6686,10 @@ export class DaemonSupervisor {
 			signals.push("SIGHUP");
 		}
 		for (const signal of signals) {
-			const handler = () => void this.shutdown(signal === "SIGINT" ? 130 : signal === "SIGHUP" ? 129 : 143, false);
+			const handler = () => {
+				this.log(`Received signal ${signal}, initiating shutdown`);
+				void this.shutdown(signal === "SIGINT" ? 130 : signal === "SIGHUP" ? 129 : 143, false);
+			};
 			process.on(signal, handler);
 			this.signalCleanupHandlers.push(() => process.off(signal, handler));
 		}
