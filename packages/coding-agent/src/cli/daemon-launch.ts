@@ -5,7 +5,7 @@
  * the heavy main module graph loads. main.ts reuses the same memoized promise.
  */
 
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { appendRotatingLog, expandTildePath, getClientErrorLogPath, getDaemonLogPath, VERSION } from "../config.js";
@@ -47,6 +47,19 @@ function delay(ms: number): Promise<void> {
 // client-errors log so replacements are attributable after the fact.
 function logDaemonLaunch(message: string): void {
 	appendRotatingLog(getClientErrorLogPath(), `[${new Date().toISOString()}] daemon-launch: ${message}`);
+}
+
+let systemdUserSessionAvailable: boolean | undefined;
+function hasSystemdUserSession(): boolean {
+	if (process.platform !== "linux") return false;
+	if (systemdUserSessionAvailable !== undefined) return systemdUserSessionAvailable;
+	try {
+		execSync("systemctl --user show-environment", { stdio: "ignore" });
+		systemdUserSessionAvailable = true;
+	} catch {
+		systemdUserSessionAvailable = false;
+	}
+	return systemdUserSessionAvailable;
 }
 
 async function canConnectToDaemon(socketPath: string, timeoutMs: number): Promise<boolean> {
@@ -394,19 +407,24 @@ Then retry the original command.`,
 	delete env[SESSION_LEASE_OWNER_ID_ENV];
 
 	const logOffset = currentDaemonLogSize(socketPath);
-	const child = spawn(
-		process.execPath,
-		[...process.execArgv, entrypoint, "--mode", "daemon", "--daemon-socket", socketPath],
-		{
-			cwd: spawnCwd ?? process.cwd(),
-			detached: true,
-			env,
-			// A pipe would tie the daemon's stderr to this short-lived CLI
-			// (EPIPE once it exits); crash details come from the daemon log,
-			// which the supervisor writes to before rethrowing startup errors.
-			stdio: "ignore",
-		},
-	);
+
+	const spawnArgs = [...process.execArgv, entrypoint, "--mode", "daemon", "--daemon-socket", socketPath];
+	let command = process.execPath;
+	let args = spawnArgs;
+	if (hasSystemdUserSession()) {
+		command = "systemd-run";
+		args = ["--user", "--scope", "--collect", "--quiet", process.execPath, ...spawnArgs];
+	}
+
+	const child = spawn(command, args, {
+		cwd: spawnCwd ?? process.cwd(),
+		detached: true,
+		env,
+		// A pipe would tie the daemon's stderr to this short-lived CLI
+		// (EPIPE once it exits); crash details come from the daemon log,
+		// which the supervisor writes to before rethrowing startup errors.
+		stdio: "ignore",
+	});
 	let childFailure:
 		| { type: "error"; error: Error }
 		| { type: "exit"; code: number | null; signal: NodeJS.Signals | null }
