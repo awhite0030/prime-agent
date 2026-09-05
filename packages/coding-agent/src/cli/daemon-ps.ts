@@ -342,7 +342,7 @@ export function verifyHelloSupervisorPid(
 export async function discoverDaemons(): Promise<DaemonInfo[]> {
 	const processBySocket = new Map<string, DiscoveredDaemonProcess>();
 	for (const daemon of scanListeningDaemons()) {
-		if (isWorkerSocketPath(daemon.socketPath)) {
+		if (isIgnoredInternalSocketPath(daemon.socketPath)) {
 			continue;
 		}
 		processBySocket.set(daemon.socketPath, daemon);
@@ -353,7 +353,7 @@ export async function discoverDaemons(): Promise<DaemonInfo[]> {
 	);
 	const sockets = new Set<string>([
 		...processBySocket.keys(),
-		...scanSocketDir().filter((socketPath) => !isWorkerSocketPath(socketPath)),
+		...scanSocketDir().filter((socketPath) => !isIgnoredInternalSocketPath(socketPath)),
 		...workerSockets,
 	]);
 	const defaultSocket = normalizeSocketPath(defaultDaemonSocketPath());
@@ -567,7 +567,7 @@ async function runShutdownAllConverging(
 	if (force) {
 		await stopHiddenSupervisors(stopped, failed, handledPids, reportedFailures, assertAdmission);
 	}
-	const daemons = (await discoverDaemons()).filter((daemon) => !isWorkerSocketPath(daemon.socketPath));
+	const daemons = (await discoverDaemons()).filter((daemon) => !isIgnoredInternalSocketPath(daemon.socketPath));
 
 	const actions = [...planShutdownAll(daemons, force)].sort(
 		(left, right) => SHUTDOWN_ALL_ACTION_ORDER[left.kind] - SHUTDOWN_ALL_ACTION_ORDER[right.kind],
@@ -683,7 +683,7 @@ async function stopHiddenSupervisors(
 	assertAdmission: () => Promise<void>,
 ): Promise<void> {
 	while (true) {
-		const listeners = scanListeningDaemons().filter((listener) => !isWorkerSocketPath(listener.socketPath));
+		const listeners = scanListeningDaemons().filter((listener) => !isIgnoredInternalSocketPath(listener.socketPath));
 		const bySocket = new Map<string, DiscoveredDaemonProcess[]>();
 		for (const listener of listeners) {
 			const group = bySocket.get(listener.socketPath) ?? [];
@@ -719,7 +719,7 @@ async function stopHiddenSupervisors(
 		}
 		const afterHidden = scanListeningDaemons().filter(
 			(listener) =>
-				!isWorkerSocketPath(listener.socketPath) &&
+				!isIgnoredInternalSocketPath(listener.socketPath) &&
 				hidden.some((candidate) => candidate.pid === listener.pid && candidate.socketPath === listener.socketPath),
 		);
 		if (afterHidden.length === 0 || daemonListenerSignature(afterHidden) === before) {
@@ -877,13 +877,19 @@ function recordShutdownFailure(
 	failed.push({ socketPath, reason });
 }
 
-export function isWorkerSocketPath(socketPath: string): boolean {
-	return (
-		process.platform !== "win32" &&
-		resolve(dirname(socketPath)) === resolve(defaultDaemonSocketDir()) &&
-		basename(socketPath).startsWith("worker-") &&
-		basename(socketPath).endsWith(".sock")
-	);
+export function isIgnoredInternalSocketPath(socketPath: string): boolean {
+	if (process.platform === "win32") {
+		return false;
+	}
+	const defaultDir = resolve(defaultDaemonSocketDir());
+	const dir = resolve(dirname(socketPath));
+	const isWorker =
+		dir === defaultDir && basename(socketPath).startsWith("worker-") && basename(socketPath).endsWith(".sock");
+	const isForkserver =
+		resolve(dirname(dir)) === defaultDir &&
+		basename(dir).startsWith("prime-agent-forkserver-") &&
+		basename(socketPath) === "control.sock";
+	return isWorker || isForkserver;
 }
 
 async function stopBackgroundService(
