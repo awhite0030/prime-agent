@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type DaemonInfo,
 	evaluateShutdownQuietPeriod,
-	isWorkerSocketPath,
+	isIgnoredInternalSocketPath,
 	mergeDiscoveredDaemonProcesses,
 	parseLsofListeners,
 	parsePrimeAgentProcessIds,
@@ -20,9 +20,9 @@ import { defaultDaemonSocketDir } from "../src/modes/daemon/daemon-socket.js";
 
 describe("worker socket classification", () => {
 	it.runIf(process.platform !== "win32")("recognizes only worker sockets in the default service directory", () => {
-		expect(isWorkerSocketPath(join(defaultDaemonSocketDir(), "worker-abc.sock"))).toBe(true);
-		expect(isWorkerSocketPath(join(defaultDaemonSocketDir(), "daemon.sock"))).toBe(false);
-		expect(isWorkerSocketPath("/tmp/worker-abc.sock")).toBe(false);
+		expect(isIgnoredInternalSocketPath(join(defaultDaemonSocketDir(), "worker-abc.sock"))).toBe(true);
+		expect(isIgnoredInternalSocketPath(join(defaultDaemonSocketDir(), "daemon.sock"))).toBe(false);
+		expect(isIgnoredInternalSocketPath("/tmp/worker-abc.sock")).toBe(false);
 	});
 });
 
