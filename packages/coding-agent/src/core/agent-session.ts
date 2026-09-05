@@ -11211,9 +11211,31 @@ export class AgentSession {
 		}
 		this._retryAbortController = undefined;
 
-		setTimeout(() => {
-			this.agent.continue().catch(() => {});
-		}, 0);
+		const runContinue = () => {
+			this.agent.continue().catch(async (error) => {
+				const code = error instanceof AgentContinueError ? error.code : undefined;
+				if (code === "busy") {
+					await this.agent.waitForIdle();
+					if (this._retryAttempt > 0) {
+						setTimeout(runContinue, 0);
+					}
+					return;
+				}
+				if (this._retryAttempt > 0) {
+					this._emit({
+						type: "auto_retry_end",
+						success: false,
+						attempt: this._retryAttempt,
+						finalError: error instanceof Error ? error.message : String(error),
+					});
+					this._retryAttempt = 0;
+					this._retryAuthFailureSources = [];
+					this._resolveRetry();
+				}
+			});
+		};
+
+		setTimeout(runContinue, 0);
 
 		return true;
 	}
