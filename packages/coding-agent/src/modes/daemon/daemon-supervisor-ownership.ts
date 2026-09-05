@@ -13,6 +13,7 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
+import { ENV_AGENT_DIR, expandTildePath } from "../../config.js";
 import { getProcessStartId } from "../../core/session-lease.js";
 import { defaultDaemonSocketDir, normalizeSocketPath } from "./daemon-socket.js";
 
@@ -317,7 +318,14 @@ class DaemonShutdownAdmission {
  * per-invocation agent dir.
  */
 function defaultDaemonSupervisorRegistryDir(environment: NodeJS.ProcessEnv = process.env): string {
-	return environment[DAEMON_SUPERVISOR_REGISTRY_DIR_ENV] ?? join(homedir(), ".prime", "supervisor-owners");
+	if (environment[DAEMON_SUPERVISOR_REGISTRY_DIR_ENV]) {
+		return environment[DAEMON_SUPERVISOR_REGISTRY_DIR_ENV];
+	}
+	const agentDirEnv = environment[ENV_AGENT_DIR];
+	if (agentDirEnv) {
+		return join(dirname(resolve(expandTildePath(agentDirEnv))), "supervisor-owners");
+	}
+	return join(homedir(), ".prime", "supervisor-owners");
 }
 
 /** Read-only legacy registry location, disabled when the registry is overridden. */
