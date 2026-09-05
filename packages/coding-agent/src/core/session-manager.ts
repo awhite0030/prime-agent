@@ -551,10 +551,32 @@ export function getDefaultSessionDir(_cwd: string, agentDir: string = getDefault
 // (one giant UTF-16 string). Splitting on 0x0a is UTF-8-safe.
 function appendEntryFromBuffer(entries: FileEntry[], buffer: Buffer, start = 0, end = buffer.length): void {
 	if (end <= start) return;
+
+	let trimmedStart = start;
+	while (trimmedStart < end && buffer[trimmedStart] === 0x00) {
+		trimmedStart++;
+	}
+
+	const nulCount = trimmedStart - start;
+	if (trimmedStart === end) {
+		if (nulCount > 0) {
+			console.warn(`Discarding malformed JSONL record consisting only of ${nulCount} NUL bytes`);
+		}
+		return;
+	}
+
+	const lineString = buffer.toString("utf8", trimmedStart, end);
+	if (!lineString.trim()) {
+		return;
+	}
+
 	try {
-		entries.push(JSON.parse(buffer.toString("utf8", start, end)) as FileEntry);
-	} catch {
-		// Skip malformed or blank lines.
+		entries.push(JSON.parse(lineString) as FileEntry);
+		if (nulCount > 0) {
+			console.warn(`Recovered malformed JSONL record with ${nulCount} leading NUL bytes`);
+		}
+	} catch (error) {
+		console.warn(`Discarding malformed JSONL record: ${(error as Error).message}`);
 	}
 }
 
