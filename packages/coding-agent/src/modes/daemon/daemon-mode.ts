@@ -217,6 +217,7 @@ import {
 	withPassiveRlmDescendantInfos,
 } from "./rlm-ledger.js";
 import {
+	type RlmSubagentDisplayEntry,
 	readRlmSubagentDisplayEntry,
 	rlmSubagentDisplayPath,
 	writeRlmSubagentDisplayEntry,
@@ -3096,13 +3097,15 @@ export class AgentDaemon {
 	}
 
 	private async createAgentObserveListResult(currentState: ActiveSessionState): Promise<AgentObserveListResult> {
-		const agents = this.listTargetableSessionStates(currentState)
-			.filter(
-				(state) =>
-					state.activeSessionId === currentState.activeSessionId ||
-					this.isAgentFamilyReachable(currentState, state),
-			)
-			.map((state) => this.createAgentObserveSummary(state, currentState));
+		const targetableStates = this.listTargetableSessionStates(currentState).filter(
+			(state) =>
+				state.activeSessionId === currentState.activeSessionId || this.isAgentFamilyReachable(currentState, state),
+		);
+		const agents = await Promise.all(
+			targetableStates.map(async (state) =>
+				this.createAgentObserveSummary(state, currentState, await this.readResidentRlmLifecycleStatus(state)),
+			),
+		);
 		const residentIds = new Set(agents.map((agent) => agent.activeSessionId));
 		for (const passive of await this.listPassiveRlmSubagents()) {
 			if (residentIds.has(passive.info.id)) continue;
@@ -3137,7 +3140,9 @@ export class AgentDaemon {
 			residentIds.add(passive.info.id);
 		}
 		return {
-			current: this.createAgentObserveSummary(currentState, currentState),
+			current:
+				agents.find((agent) => agent.activeSessionId === currentState.activeSessionId) ??
+				this.createAgentObserveSummary(currentState, currentState),
 			agents,
 		};
 	}
@@ -3149,7 +3154,11 @@ export class AgentDaemon {
 		const targetState = await this.getOrHydrateAuthorizedAgentFamilyTarget(currentState, target);
 		this.assertAgentFamilyReachable(currentState, targetState);
 		return {
-			agent: this.createAgentObserveSummary(targetState, currentState),
+			agent: this.createAgentObserveSummary(
+				targetState,
+				currentState,
+				await this.readResidentRlmLifecycleStatus(targetState),
+			),
 		};
 	}
 
@@ -3164,7 +3173,11 @@ export class AgentDaemon {
 		const messages = targetState.runtime.session.messages;
 		const startIndex = Math.max(0, messages.length - limit);
 		return {
-			agent: this.createAgentObserveSummary(targetState, currentState),
+			agent: this.createAgentObserveSummary(
+				targetState,
+				currentState,
+				await this.readResidentRlmLifecycleStatus(targetState),
+			),
 			messages: messages
 				.slice(startIndex)
 				.map((message, offset) => createAgentObserveMessagePreview(message, startIndex + offset, maxChars)),
@@ -3177,22 +3190,26 @@ export class AgentDaemon {
 	private createAgentObserveSummary(
 		state: ActiveSessionState,
 		currentState: ActiveSessionState,
+		rlmLifecycleStatus?: RlmSubagentDisplayEntry["status"],
 	): AgentObserveAgentSummary {
 		const summary = summaryForActiveSession(state);
 		const session = state.runtime.session;
 		const messages = session.messages;
 		const latest = messages.at(-1);
-		const status = session.isStreaming
-			? session.state.pendingToolCalls.size > 0
-				? "tool"
-				: "model"
-			: session.isCompacting
-				? "compacting"
-				: session.isSessionActive || session.hasRunningRlmChildren()
-					? "busy"
-					: state.clients.size > 0
-						? "user"
-						: "idle";
+		const isTerminalRlmChild = rlmLifecycleStatus === "completed" || rlmLifecycleStatus === "deleted";
+		const status = isTerminalRlmChild
+			? "idle"
+			: session.isStreaming
+				? session.state.pendingToolCalls.size > 0
+					? "tool"
+					: "model"
+				: session.isCompacting
+					? "compacting"
+					: session.isSessionActive || session.hasRunningRlmChildren()
+						? "busy"
+						: state.clients.size > 0
+							? "user"
+							: "idle";
 		return {
 			activeSessionId: state.activeSessionId,
 			sessionId: summary.sessionId,
@@ -3201,12 +3218,12 @@ export class AgentDaemon {
 			cwd: summary.cwd,
 			status,
 			isCurrent: state.activeSessionId === currentState.activeSessionId,
-			isStreaming: summary.isStreaming,
-			isCompacting: summary.isCompacting,
+			isStreaming: isTerminalRlmChild ? false : summary.isStreaming,
+			isCompacting: isTerminalRlmChild ? false : summary.isCompacting,
 			attachedClients: summary.attachedClients,
 			messageCount: summary.messageCount,
-			queuedCount: summary.sessionActions.queuedCount,
-			isSessionActive: summary.isSessionActive,
+			queuedCount: isTerminalRlmChild ? 0 : summary.sessionActions.queuedCount,
+			isSessionActive: isTerminalRlmChild ? false : summary.isSessionActive,
 			...(summary.parentActiveSessionId ? { parentActiveSessionId: summary.parentActiveSessionId } : {}),
 			...(summary.parentSessionId ? { parentSessionId: summary.parentSessionId } : {}),
 			...(summary.rlmChildId ? { rlmChildId: summary.rlmChildId } : {}),
@@ -5411,27 +5428,46 @@ export class AgentDaemon {
 		};
 	}
 
-	private createAgentMessageAgentSummary(state: ActiveSessionState): AgentSessionMessageAgentSummary {
+	private async readResidentRlmLifecycleStatus(
+		state: ActiveSessionState,
+	): Promise<RlmSubagentDisplayEntry["status"] | undefined> {
+		const metadata = state.runtime.metadata;
+		if (metadata.kind !== "subagent" || !metadata.rlmChildId || !metadata.sessionDir) return undefined;
+		const display = await readRlmSubagentDisplayEntry(metadata.sessionDir);
+		return display?.childId === metadata.rlmChildId ? display.status : undefined;
+	}
+
+	private createAgentMessageAgentSummary(
+		state: ActiveSessionState,
+		rlmLifecycleStatus?: RlmSubagentDisplayEntry["status"],
+	): AgentSessionMessageAgentSummary {
 		const metadata = state.runtime.metadata;
 		const session = state.runtime.session;
+		const isTerminalRlmChild = rlmLifecycleStatus === "completed" || rlmLifecycleStatus === "deleted";
 		return {
 			...this.createAgentSessionMessageEndpoint(state),
 			cwd: state.runtime.cwd,
-			isStreaming: session.isStreaming,
-			unfinishedActionCount: session.unfinishedActionCount,
+			isStreaming: isTerminalRlmChild ? false : session.isStreaming,
+			unfinishedActionCount: isTerminalRlmChild ? 0 : session.unfinishedActionCount,
 			...(metadata.parentActiveSessionId ? { parentActiveSessionId: metadata.parentActiveSessionId } : {}),
 			...(metadata.parentSessionId ? { parentSessionId: metadata.parentSessionId } : {}),
 			...(metadata.parentSessionFile ? { parentSessionPath: metadata.parentSessionFile } : {}),
 			rlmDepth: session.rlmDepth,
-			status: classifySessionRosterStatus({
-				activeSessionId: state.activeSessionId,
-				runtimeKind: metadata.kind,
-				activity: session.isSessionActive ? "working" : "idle",
-				isSessionActive: session.isSessionActive,
-				hasRunningRlmChildren: session.hasRunningRlmChildren?.() ?? false,
-				isStreaming: session.isStreaming,
-			} as SessionSummary),
+			status: isTerminalRlmChild
+				? "inactive"
+				: classifySessionRosterStatus({
+						activeSessionId: state.activeSessionId,
+						runtimeKind: metadata.kind,
+						activity: session.isSessionActive ? "working" : "idle",
+						isSessionActive: session.isSessionActive,
+						hasRunningRlmChildren: session.hasRunningRlmChildren?.() ?? false,
+						hasActiveHeartbeat:
+							this.cronStore.getHeartbeat(state.activeSessionId)?.status === "active" ||
+							this.cronStore.listRlmHeartbeats(state.activeSessionId).some((job) => job.status === "active"),
+						isStreaming: session.isStreaming,
+					} as SessionSummary),
 			...(metadata.rlmChildId ? { rlmChildId: metadata.rlmChildId } : {}),
+			...(rlmLifecycleStatus ? { rlmChildRegistryStatus: rlmLifecycleStatus } : {}),
 			...(metadata.sessionDir ? { sessionDir: metadata.sessionDir } : {}),
 			...(session.sessionFile ? { sessionPath: session.sessionFile } : {}),
 		};
@@ -5463,8 +5499,10 @@ export class AgentDaemon {
 		peers?: AgentSessionMessageAgentSummary[],
 	): Promise<AgentSessionMessageListResult> {
 		peers ??= await this.listSupervisorAgentPeers();
-		const localAgents = this.listTargetableSessionStates(current).map((state) =>
-			this.createAgentMessageAgentSummary(state),
+		const localAgents = await Promise.all(
+			this.listTargetableSessionStates(current).map(async (state) =>
+				this.createAgentMessageAgentSummary(state, await this.readResidentRlmLifecycleStatus(state)),
+			),
 		);
 		for (const passive of await this.listPassiveRlmSubagents()) {
 			const { entry, info } = passive;
@@ -5511,7 +5549,10 @@ export class AgentDaemon {
 		const listed = current ? await this.createAgentMessageListResult(current, remotePeers) : { agents: [] };
 		const remotePeerSet = new Set(remotePeers);
 		const localAgents = current
-			? [this.createAgentMessageAgentSummary(current), ...listed.agents.filter((agent) => !remotePeerSet.has(agent))]
+			? [
+					this.createAgentMessageAgentSummary(current, await this.readResidentRlmLifecycleStatus(current)),
+					...listed.agents.filter((agent) => !remotePeerSet.has(agent)),
+				]
 			: listed.agents;
 		const activePaths = new Set(
 			localAgents.flatMap((agent) => (agent.sessionPath ? [canonicalSessionPath(agent.sessionPath)] : [])),
