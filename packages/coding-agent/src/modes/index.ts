@@ -59,6 +59,7 @@ export {
 	scopeToSessionSubtree,
 	sectionTitle,
 	shouldApplyScopeResolution,
+	shouldShowAgentsViewSavedSession,
 	shouldShowAgentsViewSession,
 	transitionAgentsViewScope,
 	type UnifiedSessionHeartbeat,
