@@ -210,6 +210,7 @@ export function parseAgentsViewCommand(args: string[]): { explicitAgentsView: bo
 export interface DaemonClientStartupDecision {
 	appMode: AppMode;
 	startupBenchmark: boolean;
+	noDaemon?: boolean;
 	noSession?: boolean;
 	help?: boolean;
 	listModels?: string | true;
@@ -229,7 +230,12 @@ export function shouldUseDaemonInteractive(options: DaemonClientStartupDecision)
 
 export function shouldUseDaemonClient(options: DaemonClientStartupDecision): boolean {
 	return (
-		options.appMode !== "daemon" && !options.startupBenchmark && !options.help && options.listModels === undefined
+		options.appMode !== "daemon" &&
+		!options.startupBenchmark &&
+		!options.help &&
+		options.listModels === undefined &&
+		!options.noDaemon &&
+		process.env.PRIME_AGENT_NO_DAEMON !== "1"
 	);
 }
 
@@ -1214,6 +1220,7 @@ export async function main(args: string[], options?: MainOptions) {
 	const useDaemonClient = shouldUseDaemonClientRuntime({
 		appMode,
 		startupBenchmark,
+		noDaemon: parsed.noDaemon,
 		noSession: parsed.noSession,
 		listModels: parsed.listModels,
 		ownedSessionWorker: isOwnedSessionWorkerProcess(),

@@ -22,6 +22,7 @@ export interface Args {
 	version?: boolean;
 	mode?: Mode;
 	daemonSocket?: string;
+	noDaemon?: boolean;
 	noSession?: boolean;
 	fork?: string;
 	sessionDir?: string;
@@ -106,6 +107,8 @@ export function parseArgs(args: string[]): Args {
 			}
 		} else if (arg === "--daemon-socket" && i + 1 < args.length) {
 			result.daemonSocket = args[++i];
+		} else if (arg === "--no-daemon") {
+			result.noDaemon = true;
 		} else if (arg === "--continue" || arg === "-c") {
 			result.continue = true;
 		} else if (arg === "--resume" || arg === "-r") {
