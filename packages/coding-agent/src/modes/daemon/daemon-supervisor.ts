@@ -471,7 +471,9 @@ function rosterFamilyDescendsFrom(
 }
 
 function isDaemonWorkerProbeTimeout(error: unknown): boolean {
-	return error instanceof DaemonWorkerProbeTimeoutError;
+	if (error instanceof DaemonWorkerProbeTimeoutError) return true;
+	if (error instanceof Error && error.message.includes("timed out")) return true;
+	return false;
 }
 
 function isSupervisorShutdownAdmissionCancelled(error: unknown): boolean {
@@ -3907,15 +3909,17 @@ export class DaemonSupervisor {
 						);
 					}
 					const recoveryCommand = worker.descriptor.ownerClientId ? worker.transientCreateCommand : undefined;
+					const identityNowFinal = this.processIdentity(worker.descriptor.pid, worker.descriptor.processStartId);
+					const isAlive = identityNowFinal === "current" || identityNowFinal === "unknown";
 					if (!recoveryCommand || !worker.launchEnv) {
-						await this.recoverUncertainWorkerOperations(worker);
+						await this.recoverUncertainWorkerOperations(worker, !isAlive);
 						worker.descriptor.lifecycle = "failed";
 						worker.descriptor.lastError = "Waiting for a client with fresh runtime context";
 						this.persistWorker(worker);
 						this.markWorkerRosterEntries(worker, "failed");
 						return;
 					}
-					await this.recoverUncertainWorkerOperations(worker);
+					await this.recoverUncertainWorkerOperations(worker, !isAlive);
 					if (this.isWorkerRecoveryCancelled(worker)) {
 						return;
 					}
@@ -3987,7 +3991,7 @@ export class DaemonSupervisor {
 		);
 	}
 
-	private async recoverUncertainWorkerOperations(worker: ResidentWorker): Promise<void> {
+	private async recoverUncertainWorkerOperations(worker: ResidentWorker, killWorkerProcess = true): Promise<void> {
 		await this.assertRecoveryAllowed();
 		const journal = new WorkerRecoveryJournal(worker.descriptor.recoveryJournalPath);
 		const latest = journal.getLatest();
@@ -3998,59 +4002,63 @@ export class DaemonSupervisor {
 			throw new SupervisorRecoveryCancelledError("Worker recovery was cancelled before destructive cleanup");
 		}
 
-		const interruptedSessions = new Map<
-			string,
-			{ activeSessionId: string; sessionFile: string; operations: Set<string> }
-		>();
-		for (const record of uncertain) {
-			const sessionFile =
-				record.sessionFile ??
-				(record.activeSessionId === worker.descriptor.rootActiveSessionId
-					? worker.descriptor.sessionFile
-					: undefined);
-			if (!sessionFile) {
-				continue;
-			}
-			const key = `${record.activeSessionId}\0${sessionFile}`;
-			let interrupted = interruptedSessions.get(key);
-			if (!interrupted) {
-				interrupted = { activeSessionId: record.activeSessionId, sessionFile, operations: new Set() };
-				interruptedSessions.set(key, interrupted);
-			}
-			interrupted.operations.add(record.operation);
-		}
-
-		await this.assertRecoveryAllowed();
-		if (this.isWorkerCleanupCancelled(worker)) {
-			throw new SupervisorRecoveryCancelledError("Worker recovery was cancelled before interruption was recorded");
-		}
-		await Promise.all(
-			[...interruptedSessions.values()].map((interrupted) =>
-				this.catalog.markInterrupted(interrupted.sessionFile, interrupted.activeSessionId, [
-					...interrupted.operations,
-				]),
-			),
-		);
-		await this.assertRecoveryAllowed();
-		if (this.isWorkerCleanupCancelled(worker)) {
-			throw new SupervisorRecoveryCancelledError("Worker recovery was cancelled before process cleanup");
-		}
-		const orphanProcessJournalPath = worker.descriptor.orphanProcessJournalPath;
-		if (orphanProcessJournalPath) {
-			try {
-				const orphans = readActiveOrphanProcesses(orphanProcessJournalPath, worker.descriptor.pid);
-				let reapFailed = false;
-				let retryIsSafe = true;
-				for (const orphan of orphans) {
-					if (orphan.processStartId === undefined) retryIsSafe = false;
-					if (!shouldReapOrphanProcess(orphan)) {
-						continue;
-					}
-					if (!killOrphanProcess(orphan.pid)) reapFailed = true;
+		if (killWorkerProcess) {
+			const interruptedSessions = new Map<
+				string,
+				{ activeSessionId: string; sessionFile: string; operations: Set<string> }
+			>();
+			for (const record of uncertain) {
+				const sessionFile =
+					record.sessionFile ??
+					(record.activeSessionId === worker.descriptor.rootActiveSessionId
+						? worker.descriptor.sessionFile
+						: undefined);
+				if (!sessionFile) {
+					continue;
 				}
-				if (!reapFailed || !retryIsSafe) clearOrphanProcessJournal(orphanProcessJournalPath);
-			} catch (error) {
-				this.log(`Could not reap orphaned worker resources: ${String(error)}`);
+				const key = `${record.activeSessionId}\0${sessionFile}`;
+				let interrupted = interruptedSessions.get(key);
+				if (!interrupted) {
+					interrupted = { activeSessionId: record.activeSessionId, sessionFile, operations: new Set() };
+					interruptedSessions.set(key, interrupted);
+				}
+				interrupted.operations.add(record.operation);
+			}
+
+			await this.assertRecoveryAllowed();
+			if (this.isWorkerCleanupCancelled(worker)) {
+				throw new SupervisorRecoveryCancelledError(
+					"Worker recovery was cancelled before interruption was recorded",
+				);
+			}
+			await Promise.all(
+				[...interruptedSessions.values()].map((interrupted) =>
+					this.catalog.markInterrupted(interrupted.sessionFile, interrupted.activeSessionId, [
+						...interrupted.operations,
+					]),
+				),
+			);
+			await this.assertRecoveryAllowed();
+			if (this.isWorkerCleanupCancelled(worker)) {
+				throw new SupervisorRecoveryCancelledError("Worker recovery was cancelled before process cleanup");
+			}
+			const orphanProcessJournalPath = worker.descriptor.orphanProcessJournalPath;
+			if (orphanProcessJournalPath) {
+				try {
+					const orphans = readActiveOrphanProcesses(orphanProcessJournalPath, worker.descriptor.pid);
+					let reapFailed = false;
+					let retryIsSafe = true;
+					for (const orphan of orphans) {
+						if (orphan.processStartId === undefined) retryIsSafe = false;
+						if (!shouldReapOrphanProcess(orphan)) {
+							continue;
+						}
+						if (!killOrphanProcess(orphan.pid)) reapFailed = true;
+					}
+					if (!reapFailed || !retryIsSafe) clearOrphanProcessJournal(orphanProcessJournalPath);
+				} catch (error) {
+					this.log(`Could not reap orphaned worker resources: ${String(error)}`);
+				}
 			}
 		}
 		if (uncertain.length === 0) {
