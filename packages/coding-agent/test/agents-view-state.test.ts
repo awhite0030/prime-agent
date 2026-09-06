@@ -6,6 +6,7 @@ import type { AgentSessionRuntimeConfig } from "../src/core/agent-session-config
 import type { ModelRegistry } from "../src/core/model-registry.js";
 import type { SessionInfo } from "../src/core/session-manager.js";
 import type { SettingsManager } from "../src/core/settings-manager.js";
+import type { AgentConnectionSavedSessionInfo } from "../src/modes/agent-connection/index.js";
 import {
 	createAgentsViewListCommand,
 	createAgentsViewReplyHeadline,
@@ -43,6 +44,7 @@ import {
 	scopeToSessionSubtree,
 	sectionTitle,
 	shouldApplyScopeResolution,
+	shouldShowAgentsViewSavedSession,
 	shouldShowAgentsViewSession,
 	transitionAgentsViewScope,
 } from "../src/modes/index.js";
@@ -97,6 +99,38 @@ describe("agents view state", () => {
 				}),
 			),
 		).toBe("inactive");
+	});
+
+	describe("shouldShowAgentsViewSavedSession", () => {
+		function saved(overrides: Partial<AgentConnectionSavedSessionInfo>): AgentConnectionSavedSessionInfo {
+			return {
+				id: "saved-id",
+				path: "/saved.jsonl",
+				cwd: "/cwd",
+				created: new Date(),
+				modified: new Date(),
+				messageCount: 0,
+				firstMessage: "",
+				allMessagesText: "",
+				...overrides,
+			};
+		}
+
+		test("hides drafts", () => {
+			expect(shouldShowAgentsViewSavedSession(saved({ messageCount: 0 }))).toBe(false);
+		});
+
+		test("shows live sessions", () => {
+			expect(shouldShowAgentsViewSavedSession(saved({ messageCount: 1 }))).toBe(true);
+		});
+
+		test("shows archived sessions", () => {
+			expect(shouldShowAgentsViewSavedSession(saved({ messageCount: 0, state: { status: "archived" } }))).toBe(true);
+		});
+
+		test("shows crashed sessions", () => {
+			expect(shouldShowAgentsViewSavedSession(saved({ messageCount: 0, state: { status: "crash" } }))).toBe(true);
+		});
 	});
 
 	test("places all non-busy resident sessions in Idle", () => {
