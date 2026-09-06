@@ -1,8 +1,13 @@
 import { basename, resolve } from "node:path";
+import type { SessionInfo } from "../../core/session-manager.js";
 import { canonicalizePath } from "../../utils/paths.js";
 import type { AgentConnectionHeartbeat, AgentConnectionSavedSessionInfo } from "../agent-connection/index.js";
 import { rosterAgentIdForSummary } from "../daemon/agent-roster.js";
-import { classifySessionRosterStatus, type SessionSummary } from "../daemon/daemon-session-list.js";
+import {
+	classifySessionRosterStatus,
+	inactiveLifecycleForSession,
+	type SessionSummary,
+} from "../daemon/daemon-session-list.js";
 
 export type AgentsViewSection = "running" | "idle" | "inactive";
 
@@ -110,6 +115,10 @@ export function shouldShowAgentsViewSession(summary: SessionSummary, manuallyIna
 		return false;
 	}
 	return summary.lifecycle === "live";
+}
+
+export function shouldShowAgentsViewSavedSession(saved: AgentConnectionSavedSessionInfo): boolean {
+	return inactiveLifecycleForSession(saved as unknown as SessionInfo) !== "draft";
 }
 
 // TODO(unify: #2055): replace with the shared user-content rule once it lands;
@@ -235,6 +244,7 @@ export function reconcileUnifiedSessions(
 			for (const alias of aliases) recordByAlias.set(alias, record);
 			continue;
 		}
+		if (!shouldShowAgentsViewSavedSession(saved)) continue;
 		const inactive: UnifiedSessionRecord = {
 			saved,
 			identity: aliases[0]!,
