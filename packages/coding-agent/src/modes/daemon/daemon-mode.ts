@@ -563,6 +563,7 @@ export class AgentDaemon {
 				type: "session_status",
 				activeSessionId: state.activeSessionId,
 				recap: state.summaryState?.summary,
+				taskState: state.summaryState?.taskState,
 			});
 		},
 	);

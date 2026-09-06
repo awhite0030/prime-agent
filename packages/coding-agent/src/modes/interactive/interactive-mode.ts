@@ -1096,6 +1096,7 @@ export class InteractiveMode {
 	// One-line recap of the agent's recent work, rendered just above the editor.
 	private recapContainer!: Container;
 	private sessionRecap: string | undefined;
+	private lastTaskError: string | undefined;
 
 	private customFooter: (Component & { dispose?(): void }) | undefined = undefined;
 
@@ -3656,15 +3657,27 @@ export class InteractiveMode {
 		this.recapContainer.clear();
 		const recap = this.sessionRecap?.trim();
 		const showChanges = !this.isAgentStreaming() && this.agentRunFileChanges.size > 0;
-		if (showChanges) {
-			this.recapContainer.addChild(
-				new TruncatedText(formatTotalChangeSummary([...this.agentRunFileChanges.values()]), 1, 0),
-			);
+		const isExhaustedRetry =
+			this.connectionState?.taskState === "needs_input" &&
+			this.getRetryAttempt() === 0 &&
+			this.lastTaskError !== undefined;
+
+		if (isExhaustedRetry) {
+			this.recapContainer.addChild(new Text(theme.fg("error", "FAILED — waiting for input"), 1, 0));
+			this.recapContainer.addChild(new Spacer(1));
+			this.recapContainer.addChild(new Text(theme.fg("error", this.lastTaskError!), 1, 0));
+		} else {
+			if (showChanges) {
+				this.recapContainer.addChild(
+					new TruncatedText(formatTotalChangeSummary([...this.agentRunFileChanges.values()]), 1, 0),
+				);
+			}
+			if (recap) {
+				this.recapContainer.addChild(new TruncatedText(theme.fg("dim", `Recap: ${recap}`), 1, 0));
+			}
 		}
-		if (recap) {
-			this.recapContainer.addChild(new TruncatedText(theme.fg("dim", `Recap: ${recap}`), 1, 0));
-		}
-		if ((recap || showChanges) && !this.featureHintComponent) {
+
+		if ((recap || showChanges || isExhaustedRetry) && !this.featureHintComponent) {
 			this.recapContainer.addChild(new Spacer(1));
 		}
 		this.ui.requestRender();
@@ -5189,7 +5202,7 @@ export class InteractiveMode {
 					if (await run) this.ui.requestRender();
 				} else if (event.type === "session_status") {
 					this.sessionRecap = event.recap;
-					this.patchConnectionState({ recap: event.recap });
+					this.patchConnectionState({ recap: event.recap, taskState: event.taskState });
 					this.renderRecap();
 				} else if (event.type === "side_question_event") {
 					this.handleSideQuestionEvent(event.event);
@@ -5407,6 +5420,7 @@ export class InteractiveMode {
 			this.contextUsageTokenBaseline = 0;
 			this.clearShortcutGuide();
 			this.agentRunFileChanges.clear();
+			this.lastTaskError = undefined;
 			this.renderRecap();
 		}
 		this.activityTracker.handleEvent(event);
@@ -5416,6 +5430,7 @@ export class InteractiveMode {
 			case "agent_start":
 				this.featureHintRunPending = this.getRetryAttempt() === 0;
 				this.resetPendingToolState();
+				this.lastTaskError = undefined;
 				this.renderRecap();
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(true);
@@ -5787,7 +5802,8 @@ export class InteractiveMode {
 				this.syncWorkingLoader();
 				// Show error only on final failure (success shows normal response)
 				if (!event.success) {
-					this.showError(`Retry failed after ${event.attempt} attempts: ${event.finalError || "Unknown error"}`);
+					this.lastTaskError = `Retry failed after ${event.attempt} attempts: ${event.finalError || "Unknown error"}`;
+					this.renderRecap();
 				}
 				this.ui.requestRender();
 				break;
