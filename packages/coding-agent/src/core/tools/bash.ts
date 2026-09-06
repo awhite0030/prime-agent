@@ -63,7 +63,7 @@ export interface BashOperations {
  * This is useful for extensions that intercept user_bash and still want pi's
  * standard local shell behavior while wrapping or rewriting commands.
  */
-export function createLocalBashOperations(options?: { shellPath?: string }): BashOperations {
+export function createLocalBashOperations(options?: { shellPath?: string; env?: NodeJS.ProcessEnv }): BashOperations {
 	return {
 		exec: (command, cwd, { onData, signal, timeout, env }) => {
 			return new Promise((resolve, reject) => {
@@ -72,10 +72,12 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
 					reject(new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`));
 					return;
 				}
+				const baseEnv = getShellEnv();
+				const mergedEnv = { ...baseEnv, ...(options?.env ?? {}), ...(env ?? {}) };
 				const child = spawn(shell, [...args, command], {
 					cwd,
 					detached: process.platform !== "win32",
-					env: env ?? getShellEnv(),
+					env: mergedEnv,
 					stdio: ["ignore", "pipe", "pipe"],
 				});
 				if (child.pid) trackDetachedChildPid(child.pid);
@@ -146,6 +148,8 @@ export interface BashToolOptions {
 	shellPath?: string;
 	/** Hook to adjust command, cwd, or env before execution */
 	spawnHook?: BashSpawnHook;
+	/** Environment variables to merge with the shell environment */
+	env?: NodeJS.ProcessEnv;
 }
 
 const BASH_PREVIEW_LINES = 5;
@@ -274,7 +278,7 @@ export function createBashToolDefinition(
 	cwd: string,
 	options?: BashToolOptions,
 ): ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState> {
-	const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath });
+	const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath, env: options?.env });
 	const commandPrefix = options?.commandPrefix;
 	const spawnHook = options?.spawnHook;
 	const definition: ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState> = {

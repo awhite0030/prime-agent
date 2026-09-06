@@ -1,4 +1,4 @@
-Root cause: Large tool results triggering backpressure lead to subsequent `tool_execution_end` events being queued in snapshot filters, preventing prompt resolutions.
-Fix: Let sequenced recovery checkpoint events bypass `snapshotActiveSessionIds` and `backpressured` filters on the worker-daemon boundary, and let `tool_execution_end` bypass equivalent filters on the supervisor-client boundary.
-Validation: Ran `npm run check` which passed, and added focused tests verifying `tool_execution_end` delivery when backpressured, run via `npx tsx ../../node_modules/vitest/dist/cli.js --run test/suite/regressions/1902-lossless-daemon-terminal-events.test.ts`.
-Upstream discussion: https://github.com/PrimeIntellect-ai/prime-agent/discussions/1902
+Root cause: Agent sessions started at the drive root left temporary files and caches because the session working directory was inherited without any `PRIME_AGENT_SESSION_TMP` overrides for `TMP`, `TEMP`, or `TMPDIR`.
+Fix: Injected a `tmp` folder created inside the session artifact directory into `_rlmKernelEnv()` and allowed `executeBash` to merge this environment when executing `bash` tools.
+Validation: Wrote a regression test `packages/coding-agent/test/suite/regressions/1936-session-tmp.test.ts` to execute a bash and Python command inside a session reading the respective variables. Verified using `npx tsx ../../node_modules/vitest/dist/cli.js --run test/suite/regressions/1936-session-tmp.test.ts`. Also validated with `npm run check`.
+Upstream discussion: https://github.com/PrimeIntellect-ai/prime-agent/discussions/1936

@@ -9494,6 +9494,13 @@ export class AgentSession {
 			// the same local harness path. Subagents prefer their own artifact dir;
 			// ephemeral sessions fall back to the RLM session dir once it exists.
 			env.RLM_HARNESS_STATE_DIR = this._localHarnessStateDir() ?? getLocalHarnessStateDir(rlmSessionDir)!;
+
+			const tmpDir = join(rlmSessionDir, "tmp");
+			mkdirSync(tmpDir, { recursive: true });
+			env.PRIME_AGENT_SESSION_TMP = tmpDir;
+			env.TMP = tmpDir;
+			env.TEMP = tmpDir;
+			env.TMPDIR = tmpDir;
 		}
 		this._addWebsearchKeyEnv(env);
 		return env;
@@ -11321,7 +11328,7 @@ export class AgentSession {
 			const result = await executeBashWithOperations(
 				resolvedCommand,
 				this.sessionManager.getCwd(),
-				options?.operations ?? createLocalBashOperations({ shellPath }),
+				options?.operations ?? createLocalBashOperations({ shellPath, env: this._rlmKernelEnv() }),
 				{
 					onChunk,
 					signal: abortController.signal,
