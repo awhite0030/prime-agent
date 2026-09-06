@@ -63,7 +63,28 @@ export function writeRlmSubagentDisplayEntry(entry: RlmSubagentDisplayEntry): vo
 		} finally {
 			closeSync(handle);
 		}
-		renameSync(tempPath, path);
+		let attempt = 0;
+		while (true) {
+			try {
+				renameSync(tempPath, path);
+				break;
+			} catch (err) {
+				const isTransient =
+					err &&
+					typeof err === "object" &&
+					"code" in err &&
+					(err.code === "EPERM" || err.code === "EACCES" || err.code === "EBUSY");
+				if (isTransient && attempt < 5) {
+					attempt++;
+					const start = Date.now();
+					while (Date.now() - start < 50) {
+						// synchronous spin sleep for backoff
+					}
+				} else {
+					throw err;
+				}
+			}
+		}
 	} catch (error) {
 		// A failed write, fsync, or rename must not leak the temp file.
 		rmSync(tempPath, { force: true });
