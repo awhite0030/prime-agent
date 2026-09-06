@@ -726,7 +726,13 @@ export class ReplKernelManager {
 			return Promise.reject(new Error("Kernel stdin is not connected"));
 		}
 		return new Promise<void>((resolve, reject) => {
+			const onStdinError = (error: Error) => {
+				stdin.removeListener("error", onStdinError);
+				reject(error);
+			};
+			stdin.once("error", onStdinError);
 			stdin.write(`${JSON.stringify(request)}\n`, (error) => {
+				stdin.removeListener("error", onStdinError);
 				if (error) reject(error);
 				else resolve();
 			});
