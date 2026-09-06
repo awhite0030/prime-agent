@@ -1122,7 +1122,13 @@ export type DaemonOutbound =
 	| { type: "roster_update"; changed: AgentRosterEntry[]; removed?: string[]; resync?: true }
 	| { type: "session_event"; activeSessionId: string; event: AgentConnectionSessionEvent; meta?: DaemonEventMeta }
 	| { type: "side_question_event"; activeSessionId: string; event: AgentConnectionSideQuestionEvent }
-	| { type: "session_status"; activeSessionId: string; recap?: string; meta?: DaemonEventMeta }
+	| {
+			type: "session_status";
+			activeSessionId: string;
+			recap?: string;
+			taskState?: "needs_input" | "completed";
+			meta?: DaemonEventMeta;
+	  }
 	| {
 			type: "session_replaced";
 			activeSessionId: string;

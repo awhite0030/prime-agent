@@ -1764,10 +1764,10 @@ export class DaemonAgentConnection implements AgentConnection {
 			if (this.latestSnapshot) {
 				this.latestSnapshot = {
 					...this.latestSnapshot,
-					state: { ...this.latestSnapshot.state, recap: message.recap },
+					state: { ...this.latestSnapshot.state, recap: message.recap, taskState: message.taskState },
 				};
 			}
-			await this.emit({ type: "session_status", recap: message.recap });
+			await this.emit({ type: "session_status", recap: message.recap, taskState: message.taskState });
 			return;
 		}
 		if (message.type === "session_resynced") {

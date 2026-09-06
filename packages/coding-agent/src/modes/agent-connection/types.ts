@@ -354,6 +354,7 @@ export interface AgentConnectionState {
 	contextUsage: SessionStats["contextUsage"];
 	/** One-line recent-work recap for the prompt UI. */
 	recap?: string;
+	taskState?: "needs_input" | "completed";
 }
 
 export interface AgentConnectionSlashCommand {
@@ -619,7 +620,7 @@ export type AgentConnectionEvent =
 	| { type: "side_question_event"; event: AgentConnectionSideQuestionEvent }
 	| { type: "session_replaced"; state: AgentConnectionState; messages: AgentMessage[] }
 	| { type: "session_resynced"; snapshot: AgentConnectionSnapshot }
-	| { type: "session_status"; recap?: string }
+	| { type: "session_status"; recap?: string; taskState?: "needs_input" | "completed" }
 	| { type: "extension_ui_request"; request: AgentConnectionExtensionUiRequest }
 	| { type: "extension_error"; extensionPath: string; event: string; error: string }
 	| { type: "connection_status"; status: "reconnecting" | "connected"; error?: string }
