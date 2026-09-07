@@ -196,7 +196,7 @@ done
 [ "$target" = "$FAKE_NPM_TARBALL" ] || exit 1
 
 npm_major=\${FAKE_NPM_VERSION%%.*}
-if [ "$npm_major" -ge 12 ]; then
+if [ "$npm_major" -ge 11 ]; then
 	[ "$remote_policy" = all ] && [ "$script_policy" = "$FAKE_NPM_TARBALL" ] || exit 1
 else
 	[ -z "$remote_policy" ] && [ -z "$script_policy" ] || exit 1

@@ -1590,10 +1590,11 @@ confirm_kernel_runtime_setup() {
 prime_agent_npm_requires_remote_policy() {
 	npm_version=$(npm --version 2>/dev/null) || return 1
 	npm_major=${npm_version%%.*}
+	npm_major=$(printf '%s' "$npm_major" | tr -cd '0-9')
 	case "$npm_major" in
-		""|*[!0-9]*) return 1 ;;
+		"") return 1 ;;
 	esac
-	[ "$npm_major" -ge 12 ]
+	[ "$npm_major" -ge 11 ]
 }
 
 prime_agent_npm_install() {
