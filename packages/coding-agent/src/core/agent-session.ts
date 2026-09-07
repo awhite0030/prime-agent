@@ -10200,6 +10200,16 @@ export class AgentSession {
 		return true;
 	}
 
+	public releasePassiveRlmChildSession(childId: string): void {
+		if (!this._rlmChildSessions.has(childId)) return;
+		const run = this._activeRlmChildRuns.get(childId);
+		if (run) return; // Do not release active or unsettled runs
+
+		const unsubscribe = this._rlmChildUnsubscribes.get(childId);
+		if (unsubscribe) unsubscribe();
+		this._removeRlmSubagentTracking(childId);
+	}
+
 	releaseRlmChildSession(childId: string, session: AgentSession): (() => void) | false {
 		const run = this._activeRlmChildRuns.get(childId);
 		if (run?.session === session && run.status === "done") {
