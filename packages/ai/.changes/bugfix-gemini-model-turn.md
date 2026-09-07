@@ -1,0 +1,1 @@
+- Fixed an issue where the Google provider would fail with HTTP 400 when the prompt history ended with a model turn without an ensuing user turn.

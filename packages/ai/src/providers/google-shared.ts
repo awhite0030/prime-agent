@@ -242,6 +242,16 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 		}
 	}
 
+	// Google Generative Language API strictly enforces alternating turn sequences
+	// (user -> model -> user -> model). The API rejects payloads where the last
+	// element is a model turn with HTTP 400.
+	if (contents.length > 0 && contents[contents.length - 1].role === "model") {
+		contents.push({
+			role: "user",
+			parts: [{ text: "Please continue." }],
+		});
+	}
+
 	return contents;
 }
 
