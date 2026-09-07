@@ -1,4 +1,7 @@
-Root cause: Large tool results triggering backpressure lead to subsequent `tool_execution_end` events being queued in snapshot filters, preventing prompt resolutions.
-Fix: Let sequenced recovery checkpoint events bypass `snapshotActiveSessionIds` and `backpressured` filters on the worker-daemon boundary, and let `tool_execution_end` bypass equivalent filters on the supervisor-client boundary.
-Validation: Ran `npm run check` which passed, and added focused tests verifying `tool_execution_end` delivery when backpressured, run via `npx tsx ../../node_modules/vitest/dist/cli.js --run test/suite/regressions/1902-lossless-daemon-terminal-events.test.ts`.
-Upstream discussion: https://github.com/PrimeIntellect-ai/prime-agent/discussions/1902
+Root cause: WebSocket streams lack inactivity timeout checking, which causes hanging streams when the connection silently drops. Furthermore, passive completed children remain labelled live in the daemon due to incorrect registry status resolution.
+
+Fix: Added a 30s inactivity timer in `parseWebSocket` (in `openai-codex-responses.ts`) which is reset on each message, aborting and closing the websocket on timeout. Also introduced `releasePassiveRlmChildSession` in `AgentSession` (in `agent-session.ts` and `daemon-mode.ts`) to cleanly drop RLM tracking of passive children and updated daemon status resolution to require `daemonChild.status === "running"` for a running state.
+
+Validation: Pre-commit checks passed (`npm run check`) and automated tests verified (`npx vitest --run test/suite/regressions/agent-session-passive-rlm-child-release.test.ts` passed).
+
+Upstream discussion: https://github.com/PrimeIntellect-ai/prime-agent/discussions/1958

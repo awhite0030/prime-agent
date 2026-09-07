@@ -2434,9 +2434,6 @@ export class AgentDaemon {
 							await this.deleteRlmSubagentArtifacts(options.id, childSessionFile);
 						}
 					}
-					if (status === "cancelled" || status === "error") {
-						parentState.runtime.session.releasePassiveRlmChildSession(options.id);
-					}
 				}
 				if (deletionError !== undefined) throw deletionError;
 			},
@@ -2508,7 +2505,6 @@ export class AgentDaemon {
 						await this.deleteRlmSubagentArtifacts(childId, childSessionFile);
 					}
 				}
-				parentState.runtime.session.releasePassiveRlmChildSession(childId);
 			},
 			disposeRlmSubagentRuntimes: async () => {
 				const cascadeError = await this.closeChildSessions(parentState, "replaced");
