@@ -183,13 +183,18 @@ describe("kernel bootstrap", () => {
 		const log = readFileSync(logPath, "utf8");
 		expect(log).toContain("python install 3.11");
 		expect(log).toContain(`venv ${venv} --python 3.11 --seed`);
-		expect(log).toContain("pip install --python");
-		expect(log).not.toContain("ipykernel");
-		expect(log).toContain("prime-agent-runtime");
-		expect(log).toContain("dill");
-		for (const uvArg of DEFAULT_RLM_EXTRA_UV_ARGS) {
-			expect(log).toContain(uvArg);
+		if (process.env.PRIME_AGENT_NO_RUNTIME_SOURCE) {
+			expect(log).toContain("pip install --python");
+			expect(log).toContain("prime-agent-runtime");
+			expect(log).toContain("dill");
+			for (const uvArg of DEFAULT_RLM_EXTRA_UV_ARGS) {
+				expect(log).toContain(uvArg);
+			}
+		} else {
+			expect(log).toContain("pip sync --python");
+			expect(log).toContain("uv.lock");
 		}
+		expect(log).not.toContain("ipykernel");
 		const version = JSON.parse(readFileSync(join(venv, ".bootstrap-version"), "utf8"));
 		expect(version).toEqual({
 			schema: 9,

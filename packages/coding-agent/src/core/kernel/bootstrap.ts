@@ -738,15 +738,19 @@ async function bootstrapVenv(
 
 	await run(uv, ["python", "install", PYTHON_VERSION]);
 	await run(uv, ["venv", venv, "--python", PYTHON_VERSION, "--seed"]);
-	await run(uv, [
-		"pip",
-		"install",
-		"--python",
-		python,
-		runtimeRequirement,
-		STATE_SNAPSHOT_REQUIREMENT,
-		...DEFAULT_RLM_EXTRA_UV_ARGS,
-	]);
+	if (sourceDir) {
+		await run(uv, ["pip", "sync", "--python", python, path.join(sourceDir, "uv.lock")]);
+	} else {
+		await run(uv, [
+			"pip",
+			"install",
+			"--python",
+			python,
+			runtimeRequirement,
+			STATE_SNAPSHOT_REQUIREMENT,
+			...DEFAULT_RLM_EXTRA_UV_ARGS,
+		]);
+	}
 	await syncPythonSkills(uv, venv, python, runtimeIdentity, pythonSkills, options);
 }
 
