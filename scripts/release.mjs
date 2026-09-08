@@ -214,8 +214,6 @@ run(`git commit -m "Release v${version}"`);
 run(`git tag v${version}`);
 console.log();
 
-console.log("Publishing to npm...");
-run("npm run publish");
 console.log();
 
 console.log("Pushing to remote...");
