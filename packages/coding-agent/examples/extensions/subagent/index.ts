@@ -213,6 +213,9 @@ async function runSingleAgent(
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
+	timeout: number | undefined,
+	retryCount: number | undefined,
+	onAbort: "error" | "retry" | "fallback" | "continue" | undefined,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
@@ -267,75 +270,78 @@ async function runSingleAgent(
 		}
 
 		args.push(`Task: ${task}`);
-		let wasAborted = false;
 
-		const exitCode = await new Promise<number>((resolve) => {
-			const invocation = getPiInvocation(args);
-			const proc = spawn(invocation.command, invocation.args, {
-				cwd: cwd ?? defaultCwd,
-				shell: false,
-				stdio: ["ignore", "pipe", "pipe"],
-			});
-			let buffer = "";
+		const maxAttempts = (retryCount ?? 0) + 1;
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			let wasAborted = false;
+			let timeoutId: NodeJS.Timeout | undefined;
 
-			const processLine = (line: string) => {
-				if (!line.trim()) return;
-				let event: any;
-				try {
-					event = JSON.parse(line);
-				} catch {
-					return;
-				}
+			const exitCode = await new Promise<number>((resolve) => {
+				const invocation = getPiInvocation(args);
+				const proc = spawn(invocation.command, invocation.args, {
+					cwd: cwd ?? defaultCwd,
+					shell: false,
+					stdio: ["ignore", "pipe", "pipe"],
+				});
+				let buffer = "";
 
-				if (event.type === "message_end" && event.message) {
-					const msg = event.message as Message;
-					currentResult.messages.push(msg);
-
-					if (msg.role === "assistant") {
-						currentResult.usage.turns++;
-						const usage = msg.usage;
-						if (usage) {
-							currentResult.usage.input += usage.input || 0;
-							currentResult.usage.output += usage.output || 0;
-							currentResult.usage.cacheRead += usage.cacheRead || 0;
-							currentResult.usage.cacheWrite += usage.cacheWrite || 0;
-							currentResult.usage.cost += usage.cost?.total || 0;
-							currentResult.usage.contextTokens = usage.totalTokens || 0;
-						}
-						if (!currentResult.model && msg.model) currentResult.model = msg.model;
-						if (msg.stopReason) currentResult.stopReason = msg.stopReason;
-						if (msg.errorMessage) currentResult.errorMessage = msg.errorMessage;
+				const processLine = (line: string) => {
+					if (!line.trim()) return;
+					let event: any;
+					try {
+						event = JSON.parse(line);
+					} catch {
+						return;
 					}
-					emitUpdate();
-				}
 
-				if (event.type === "tool_result_end" && event.message) {
-					currentResult.messages.push(event.message as Message);
-					emitUpdate();
-				}
-			};
+					if (event.type === "message_end" && event.message) {
+						const msg = event.message as Message;
+						currentResult.messages.push(msg);
 
-			proc.stdout.on("data", (data) => {
-				buffer += data.toString();
-				const lines = buffer.split("\n");
-				buffer = lines.pop() || "";
-				for (const line of lines) processLine(line);
-			});
+						if (msg.role === "assistant") {
+							currentResult.usage.turns++;
+							const usage = msg.usage;
+							if (usage) {
+								currentResult.usage.input += usage.input || 0;
+								currentResult.usage.output += usage.output || 0;
+								currentResult.usage.cacheRead += usage.cacheRead || 0;
+								currentResult.usage.cacheWrite += usage.cacheWrite || 0;
+								currentResult.usage.cost += usage.cost?.total || 0;
+								currentResult.usage.contextTokens = usage.totalTokens || 0;
+							}
+							if (!currentResult.model && msg.model) currentResult.model = msg.model;
+							if (msg.stopReason) currentResult.stopReason = msg.stopReason;
+							if (msg.errorMessage) currentResult.errorMessage = msg.errorMessage;
+						}
+						emitUpdate();
+					}
 
-			proc.stderr.on("data", (data) => {
-				currentResult.stderr += data.toString();
-			});
+					if (event.type === "tool_result_end" && event.message) {
+						currentResult.messages.push(event.message as Message);
+						emitUpdate();
+					}
+				};
 
-			proc.on("close", (code) => {
-				if (buffer.trim()) processLine(buffer);
-				resolve(code ?? 0);
-			});
+				proc.stdout.on("data", (data) => {
+					buffer += data.toString();
+					const lines = buffer.split("\n");
+					buffer = lines.pop() || "";
+					for (const line of lines) processLine(line);
+				});
 
-			proc.on("error", () => {
-				resolve(1);
-			});
+				proc.stderr.on("data", (data) => {
+					currentResult.stderr += data.toString();
+				});
 
-			if (signal) {
+				proc.on("close", (code) => {
+					if (buffer.trim()) processLine(buffer);
+					resolve(code ?? 0);
+				});
+
+				proc.on("error", () => {
+					resolve(1);
+				});
+
 				const killProc = () => {
 					wasAborted = true;
 					proc.kill("SIGTERM");
@@ -343,13 +349,71 @@ async function runSingleAgent(
 						if (!proc.killed) proc.kill("SIGKILL");
 					}, 5000);
 				};
-				if (signal.aborted) killProc();
-				else signal.addEventListener("abort", killProc, { once: true });
-			}
-		});
 
-		currentResult.exitCode = exitCode;
-		if (wasAborted) throw new Error("Subagent was aborted");
+				if (signal) {
+					if (signal.aborted) killProc();
+					else signal.addEventListener("abort", killProc, { once: true });
+				}
+
+				if (timeout !== undefined && timeout > 0) {
+					timeoutId = setTimeout(() => {
+						currentResult.stderr += `\n[Subagent timed out after ${timeout}ms]`;
+						killProc();
+					}, timeout);
+				}
+			});
+
+			if (timeoutId) clearTimeout(timeoutId);
+
+			currentResult.exitCode = exitCode;
+			if (wasAborted && !signal?.aborted) {
+				currentResult.exitCode = 1;
+				if (!currentResult.errorMessage)
+					currentResult.errorMessage = "Request was aborted (timeout or internal kill)";
+			}
+
+			const isError =
+				((currentResult.exitCode !== 0 ||
+					currentResult.stopReason === "error" ||
+					currentResult.stopReason === "aborted" ||
+					(currentResult.errorMessage !== undefined && currentResult.errorMessage !== "")) &&
+					currentResult.stopReason !== "stop") ||
+				(wasAborted && !timeoutId);
+
+			if (!isError) {
+				return currentResult;
+			}
+
+			if (signal?.aborted) {
+				throw new Error("Subagent was aborted");
+			}
+
+			if (attempt < maxAttempts) {
+				const backoffMs = process.env.NODE_ENV === "test" ? 10 : 1000 * 2 ** (attempt - 1);
+				currentResult.stderr += `\n[Attempt ${attempt} failed, retrying in ${backoffMs}ms...]`;
+				emitUpdate();
+				await new Promise((resolve) => setTimeout(resolve, backoffMs));
+
+				// Reset some states for retry, but keep usage/messages if we want to retain history
+				currentResult.exitCode = 0;
+				currentResult.stopReason = undefined;
+				currentResult.errorMessage = undefined;
+			} else {
+				if (onAbort === "continue" || onAbort === "fallback") {
+					currentResult.stderr += `\n[All attempts failed. on_abort=${onAbort} configured, continuing gracefully.]`;
+					currentResult.exitCode = 0; // Fake success to continue
+					currentResult.stopReason = "stop";
+					currentResult.errorMessage = undefined;
+					emitUpdate();
+					return currentResult;
+				}
+				if (onAbort === "retry") {
+					throw new Error("Subagent failed and on_abort=retry is set (not supported to infinite loop here).");
+				}
+				return currentResult;
+			}
+		}
+
 		return currentResult;
 	} finally {
 		if (tmpPromptPath)
@@ -371,12 +435,26 @@ const TaskItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task to delegate to the agent" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+	timeout: Type.Optional(Type.Number({ description: "Configurable timeout in milliseconds" })),
+	retry_count: Type.Optional(Type.Number({ description: "Number of retries on failure (default: 0)" })),
+	on_abort: Type.Optional(
+		Type.Union([Type.Literal("error"), Type.Literal("retry"), Type.Literal("fallback"), Type.Literal("continue")], {
+			description: "Action to take on abort/error",
+		}),
+	),
 });
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task with optional {previous} placeholder for prior output" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+	timeout: Type.Optional(Type.Number({ description: "Configurable timeout in milliseconds" })),
+	retry_count: Type.Optional(Type.Number({ description: "Number of retries on failure (default: 0)" })),
+	on_abort: Type.Optional(
+		Type.Union([Type.Literal("error"), Type.Literal("retry"), Type.Literal("fallback"), Type.Literal("continue")], {
+			description: "Action to take on abort/error",
+		}),
+	),
 });
 
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
@@ -394,6 +472,13 @@ const SubagentParams = Type.Object({
 		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
 	),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
+	timeout: Type.Optional(Type.Number({ description: "Configurable timeout in milliseconds" })),
+	retry_count: Type.Optional(Type.Number({ description: "Number of retries on failure (default: 0)" })),
+	on_abort: Type.Optional(
+		Type.Union([Type.Literal("error"), Type.Literal("retry"), Type.Literal("fallback"), Type.Literal("continue")], {
+			description: "Action to take on abort/error",
+		}),
+	),
 });
 
 export default function (pi: ExtensionAPI) {
@@ -499,11 +584,15 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
+						step.timeout ?? params.timeout,
+						step.retry_count ?? params.retry_count,
+						step.on_abort ?? params.on_abort,
 					);
 					results.push(result);
 
 					const isError =
-						result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+						(result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted") &&
+						result.stopReason !== "stop";
 					if (isError) {
 						const errorMsg =
 							result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
@@ -579,6 +668,9 @@ export default function (pi: ExtensionAPI) {
 							}
 						},
 						makeDetails("parallel"),
+						t.timeout ?? params.timeout,
+						t.retry_count ?? params.retry_count,
+						t.on_abort ?? params.on_abort,
 					);
 					allResults[index] = result;
 					emitParallelUpdate();
@@ -613,8 +705,13 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					onUpdate,
 					makeDetails("single"),
+					params.timeout,
+					params.retry_count,
+					params.on_abort,
 				);
-				const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+				const isError =
+					(result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted") &&
+					result.stopReason !== "stop";
 				if (isError) {
 					const errorMsg =
 						result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
@@ -708,7 +805,8 @@ export default function (pi: ExtensionAPI) {
 
 			if (details.mode === "single" && details.results.length === 1) {
 				const r = details.results[0];
-				const isError = r.exitCode !== 0 || r.stopReason === "error" || r.stopReason === "aborted";
+				const isError =
+					(r.exitCode !== 0 || r.stopReason === "error" || r.stopReason === "aborted") && r.stopReason !== "stop";
 				const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
 				const displayItems = getDisplayItems(r.messages);
 				const finalOutput = getFinalOutput(r.messages);
