@@ -35,7 +35,23 @@ interface TableBounds {
 }
 
 function cellMarker(kind: CellMarker["kind"], row: number, column: number, segment: number, content?: string): string {
-	const encodedContent = content === undefined ? "" : `:${encodeURIComponent(content)}`;
+	let encodedContent = "";
+	if (content !== undefined) {
+		try {
+			encodedContent = `:${encodeURIComponent(content)}`;
+		} catch (_e) {
+			try {
+				// Replace unpaired surrogates with U+FFFD to avoid URIError
+				const wellFormed = content.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (match) =>
+					match.length === 2 ? match : "\uFFFD",
+				);
+				encodedContent = `:${encodeURIComponent(wellFormed)}`;
+			} catch (_err) {
+				// Fallback to completely safe string if regex fails for some reason
+				encodedContent = ":%EF%BF%BD";
+			}
+		}
+	}
 	return `${TABLE_MARKER_PREFIX}${kind}:${row}:${column}:${segment}${encodedContent}\x07`;
 }
 
