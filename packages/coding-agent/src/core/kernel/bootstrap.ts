@@ -700,7 +700,7 @@ export async function resolveRuntimeIdentity(): Promise<string> {
 // recording it for a local checkout would permanently mask later source changes.
 async function hashRuntimeSource(sourceDir: string): Promise<string> {
 	const rlmDir = path.join(sourceDir, "src", "rlm");
-	const files: string[] = [path.join(sourceDir, "pyproject.toml")];
+	const files: string[] = [path.join(sourceDir, "pyproject.toml"), path.join(sourceDir, "uv.lock")];
 	async function collect(dir: string): Promise<void> {
 		const entries = await readdir(dir, { withFileTypes: true });
 		for (const entry of entries) {
