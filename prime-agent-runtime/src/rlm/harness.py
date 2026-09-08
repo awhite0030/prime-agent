@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import json
 import os
+import time
+import tempfile
+import shutil
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -200,14 +203,47 @@ class HarnessState:
         if self.file_path is None or not self.file_path.exists():
             self._loaded_mtime = None
             return self
+
+        lock_path = self.file_path.with_suffix(".json.lock")
+        for _ in range(50):
+            try:
+                os.mkdir(lock_path)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - lock_path.stat().st_mtime > 10:
+                        try:
+                            os.rmdir(lock_path)
+                        except OSError:
+                            pass
+                except OSError:
+                    pass
+                time.sleep(0.1)
+        else:
+            # Degrade to empty state on lock timeout during read, allowing agent to continue
+            data = {}
+            lock_acquired = False
+
+        if lock_path.exists():
+            lock_acquired = True
+
         mtime = self._disk_mtime()
         try:
-            with self.file_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
+            if lock_acquired:
+                with self.file_path.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = {}
         except (OSError, ValueError):
             # A corrupt or unreadable state file must not crash the kernel or block
             # refinement. Treat it as empty; the next save() rewrites it cleanly.
             data = {}
+        finally:
+            if lock_acquired:
+                try:
+                    os.rmdir(lock_path)
+                except OSError:
+                    pass
         # json.load returns non-dict types for valid JSON like `null`, `[]`, or a bare
         # string; coerce those to an empty object before attribute access.
         if not isinstance(data, dict):
@@ -295,8 +331,47 @@ class HarnessState:
             },
             "refinements": [asdict(event) for event in self.refinements],
         }
-        with self.file_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        lock_path = self.file_path.with_suffix(".json.lock")
+        if not self.file_path.exists():
+            # Ensure base file exists so proper-lockfile can stat it
+            try:
+                self.file_path.touch(mode=0o600, exist_ok=False)
+            except FileExistsError:
+                pass
+
+        # Simple lock spin
+        for _ in range(50):
+            try:
+                os.mkdir(lock_path)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - lock_path.stat().st_mtime > 10:
+                        try:
+                            os.rmdir(lock_path)
+                        except OSError:
+                            pass
+                except OSError:
+                    pass
+                time.sleep(0.1)
+        else:
+            raise TimeoutError("Could not acquire lock for harness state")
+
+        try:
+            temp_path = self.file_path.with_suffix(f".{os.getpid()}.{time.time()}.tmp")
+            with temp_path.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+
+            # Atomic replace (os.replace works on both Unix and Windows)
+            os.replace(temp_path, self.file_path)
+        finally:
+            try:
+                os.rmdir(lock_path)
+            except OSError:
+                pass
+
         self._loaded_mtime = self._disk_mtime()
         return self
 
