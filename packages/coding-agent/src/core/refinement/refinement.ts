@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai";
+import { lockSync } from "proper-lockfile";
 import { getAgentDir } from "../../config.js";
 import { serializeConversation } from "../compaction/utils.js";
 import { convertToLlm } from "../messages.js";
@@ -287,7 +288,14 @@ export function loadHarnessState(
 		return emptyHarnessState();
 	}
 	let parsed: Partial<HarnessState>;
+	let releaseLock: (() => void) | undefined;
 	try {
+		try {
+			releaseLock = lockSync(statePath, { retries: 10, stale: 5000 });
+		} catch {
+			// If lock fails, degrade to empty to avoid crashing agent
+			return emptyHarnessState();
+		}
 		const raw = JSON.parse(readFileSync(statePath, "utf8"));
 		// loadHarnessState runs on every system-prompt build and before each /refine, so
 		// a corrupt or unreadable (or non-object) state file must degrade to empty rather
@@ -298,6 +306,8 @@ export function loadHarnessState(
 		parsed = raw as Partial<HarnessState>;
 	} catch {
 		return emptyHarnessState();
+	} finally {
+		releaseLock?.();
 	}
 	const state = emptyHarnessState();
 	state.schema = typeof parsed.schema === "number" ? parsed.schema : 1;
