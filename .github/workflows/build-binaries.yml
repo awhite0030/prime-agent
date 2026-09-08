@@ -69,7 +69,7 @@ jobs:
             publish_production=true
           elif [ "$REF_TYPE" = tag ]; then
             production_version="${REF_NAME#v}"
-            build_ref="$REF_NAME"
+            build_ref="$GITHUB_SHA_VALUE"
             publish_production=true
           else
             production_version=$(node -p "require('./package.json').version")
@@ -287,6 +287,49 @@ jobs:
             echo "Release v${PRODUCTION_VERSION}" > /tmp/release-notes.md
           fi
 
+      - name: Verify CI gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! printf '%s\n' "$BUILD_REF" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "BUILD_REF must be a 40-character commit SHA, got: $BUILD_REF" >&2
+            exit 1
+          fi
+
+          result=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${BUILD_REF}/check-runs?check_name=build-check-test" \
+            --jq 'if .check_runs | length == 0 then "pending" elif .check_runs[0].conclusion == null then "pending" else .check_runs[0].conclusion end')
+
+          if [ "$result" != "success" ]; then
+             echo "CI aggregate gate 'build-check-test' did not succeed for $BUILD_REF: $result" >&2
+             exit 1
+          fi
+
+      - name: Verify R2 and GitHub production artifacts drift
+        if: env.PUBLISH_PRODUCTION == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PRODUCTION_DIR=release-artifacts/production
+          RELEASE_PREFIX="releases/v${PRODUCTION_VERSION}"
+
+          # Check R2
+          if existing_sums=$(aws s3 cp "s3://${R2_BUCKET}/${RELEASE_PREFIX}/SHA256SUMS" - --endpoint-url "$R2_ENDPOINT_URL" 2>/dev/null); then
+             local_sums=$(cat "$PRODUCTION_DIR/SHA256SUMS")
+             if [ "$existing_sums" != "$local_sums" ]; then
+                echo "R2 checksum drift detected for v${PRODUCTION_VERSION}" >&2
+                exit 1
+             fi
+          fi
+
+          # Check GitHub
+          if existing_sums=$(gh release download "v${PRODUCTION_VERSION}" -p SHA256SUMS -O - 2>/dev/null); then
+             local_sums=$(cat "$PRODUCTION_DIR/SHA256SUMS")
+             if [ "$existing_sums" != "$local_sums" ]; then
+                echo "GitHub release checksum drift detected for v${PRODUCTION_VERSION}" >&2
+                exit 1
+             fi
+          fi
+
       - name: Publish production channel to R2
         if: env.PUBLISH_PRODUCTION == 'true'
         run: |
@@ -346,13 +389,27 @@ jobs:
           fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$PRODUCTION_DIR"/* --clobber
+            gh release upload "$RELEASE_TAG" "$PRODUCTION_DIR"/*
           else
             gh release create "$RELEASE_TAG" \
               --title "$RELEASE_TAG" \
               "${target_args[@]}" \
               --notes-file /tmp/release-notes.md \
               "$PRODUCTION_DIR"/*
+          fi
+
+      - name: Verify R2 beta artifacts drift
+        if: env.PUBLISH_BETA == 'true'
+        run: |
+          BETA_DIR=release-artifacts/beta
+          RELEASE_PREFIX="releases/v${BETA_VERSION}"
+
+          if existing_sums=$(aws s3 cp "s3://${R2_BUCKET}/${RELEASE_PREFIX}/SHA256SUMS" - --endpoint-url "$R2_ENDPOINT_URL" 2>/dev/null); then
+             local_sums=$(cat "$BETA_DIR/SHA256SUMS")
+             if [ "$existing_sums" != "$local_sums" ]; then
+                echo "R2 checksum drift detected for v${BETA_VERSION}" >&2
+                exit 1
+             fi
           fi
 
       - name: Publish immutable beta artifacts to R2
@@ -443,5 +500,5 @@ jobs:
               --prerelease
           fi
 
-          gh release upload beta "$BETA_DIR"/* --clobber
+          gh release upload beta "$BETA_DIR"/*
           echo "Beta installer: ${R2_PUBLIC_BASE_URL%/}/install-beta.sh"

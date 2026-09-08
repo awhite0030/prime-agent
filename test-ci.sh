@@ -1,0 +1,2 @@
+echo '{"check_runs":[{"name":"build-check-test","conclusion":null,"status":"in_progress"}]}' | jq 'if .check_runs | length == 0 then "pending" elif .check_runs[0].conclusion == null then "pending" else .check_runs[0].conclusion end'
+echo '{"check_runs":[{"name":"build-check-test","conclusion":"success","status":"completed"}]}' | jq -r 'if .check_runs | length == 0 then "pending" elif .check_runs[0].conclusion == null then "pending" else .check_runs[0].conclusion end'
