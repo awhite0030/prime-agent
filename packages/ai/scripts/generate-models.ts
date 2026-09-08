@@ -831,7 +831,12 @@ async function fetchOpenRouterModels(): Promise<Model<any>[]> {
 	try {
 		const models: Model<any>[] = [];
 
-		for (const model of await fetchOpenRouterCatalog()) {
+		const catalog = await fetchOpenRouterCatalog();
+		if (!Array.isArray(catalog) || catalog.length === 0) {
+			throw new Error("OpenRouter catalog is empty or invalid");
+		}
+
+		for (const model of catalog) {
 			// Only include models that support tools
 			if (!model.supported_parameters?.includes("tools")) continue;
 			// :batch routes are asynchronous batch variants, not streaming models
@@ -899,7 +904,7 @@ async function fetchOpenRouterModels(): Promise<Model<any>[]> {
 		return models;
 	} catch (error) {
 		console.error("Failed to fetch OpenRouter models:", error);
-		return [];
+		throw error;
 	}
 }
 
@@ -908,6 +913,9 @@ async function fetchAiGatewayModels(): Promise<Model<any>[]> {
 		console.log("Fetching models from Vercel AI Gateway API...");
 		const response = await fetch(`${AI_GATEWAY_MODELS_URL}/models`);
 		const data = await response.json() as any;
+		if (!data || !Array.isArray(data.models) || data.models.length === 0) {
+			throw new Error("Vercel AI Gateway models data is empty or invalid");
+		}
 		const models: Model<any>[] = [];
 
 		const toNumber = (value: string | number | undefined): number => {
@@ -958,7 +966,7 @@ async function fetchAiGatewayModels(): Promise<Model<any>[]> {
 		return models;
 	} catch (error) {
 		console.error("Failed to fetch Vercel AI Gateway models:", error);
-		return [];
+		throw error;
 	}
 }
 
@@ -967,6 +975,9 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		console.log("Fetching models from models.dev API...");
 		const response = await fetch("https://models.dev/api.json");
 		const data = await response.json() as any;
+		if (!data || typeof data !== "object" || Object.keys(data).length === 0) {
+			throw new Error("models.dev data is empty or invalid");
+		}
 
 		const models: Model<any>[] = [];
 
@@ -1662,7 +1673,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		return models;
 	} catch (error) {
 		console.error("Failed to load models.dev data:", error);
-		return [];
+		throw error;
 	}
 }
 
@@ -2552,4 +2563,7 @@ export const MODELS = {
 }
 
 // Run the generator
-generateModels().catch(console.error);
+generateModels().catch((error) => {
+	console.error("Model generation failed:", error);
+	process.exit(1);
+});
