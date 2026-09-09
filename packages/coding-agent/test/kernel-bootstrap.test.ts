@@ -9,6 +9,7 @@ import {
 	ensureKernelPython,
 	getKernelVenvDir,
 	type KernelPythonSkill,
+	kernelVenvPython,
 	resolveRuntimeIdentity,
 } from "../src/core/kernel/bootstrap.js";
 
@@ -171,6 +172,14 @@ describe("kernel bootstrap", () => {
 		process.env.PRIME_AGENT_KERNEL_VENV = venv;
 
 		expect(getKernelVenvDir()).toBe(venv);
+	});
+
+	it("resolves the venv python path per platform", () => {
+		const venv = join(tempDir, "kernel-venv");
+
+		expect(kernelVenvPython(venv, "win32")).toBe(join(venv, "Scripts", "python.exe"));
+		expect(kernelVenvPython(venv, "linux")).toBe(join(venv, "bin", "python"));
+		expect(kernelVenvPython(venv, "darwin")).toBe(join(venv, "bin", "python"));
 	});
 
 	it("bootstraps a missing venv with uv, prime-agent-runtime, and default extra packages", async () => {

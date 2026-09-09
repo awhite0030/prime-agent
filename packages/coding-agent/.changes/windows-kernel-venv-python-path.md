@@ -1,0 +1,1 @@
+- Fixed the Python kernel bootstrap on Windows: the venv interpreter path now resolves to \`Scripts/python.exe\` instead of the POSIX-only \`bin/python\`, which made \`uv pip install\` fail with "dependency installation exited with code 2".
