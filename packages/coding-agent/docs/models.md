@@ -5,6 +5,8 @@ Add custom providers and models (Ollama, vLLM, LM Studio, proxies) via `~/.prime
 ## Table of Contents
 
 - [Minimal Example](#minimal-example)
+- [Selecting Custom Models](#selecting-custom-models)
+- [Common Setups](#common-setups)
 - [Full Example](#full-example)
 - [Supported APIs](#supported-apis)
 - [Provider Configuration](#provider-configuration)
@@ -61,6 +63,97 @@ You can set `compat` at the provider level to apply to all models, or at the mod
   }
 }
 ```
+
+## Selecting Custom Models
+
+Start Prime Agent using the custom model via CLI:
+
+```bash
+prime-agent --provider ollama --model llama3.1:8b
+# or using the provider/model shorthand:
+prime-agent --model ollama/llama3.1:8b
+```
+
+Inside an interactive session, use the `/model` slash command to open the model picker. Custom models appear in the list under their configured names.
+
+Custom providers defined in `models.json` will also appear in the `/login` provider selector, allowing you to securely store their API keys in `auth.json`.
+
+## Common Setups
+
+For typical local or self-hosted OpenAI-compatible servers, use these snippets. Most require disabling the `developer` role and `reasoning_effort` support, as these are specific to newer OpenAI models.
+
+### vLLM
+
+```json
+{
+  "providers": {
+    "vllm": {
+      "baseUrl": "http://localhost:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "vllm",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "meta-llama/Meta-Llama-3-8B-Instruct" }
+      ]
+    }
+  }
+}
+```
+
+### LM Studio
+
+```json
+{
+  "providers": {
+    "lmstudio": {
+      "baseUrl": "http://localhost:1234/v1",
+      "api": "openai-completions",
+      "apiKey": "lmstudio",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "llama-3-8b-instruct" }
+      ]
+    }
+  }
+}
+```
+
+### Generic Proxy
+
+```json
+{
+  "providers": {
+    "my-proxy": {
+      "baseUrl": "https://api.my-proxy.com/v1",
+      "api": "openai-completions",
+      "apiKey": "MY_PROXY_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "custom-model-id" }
+      ]
+    }
+  }
+}
+```
+
+### Troubleshooting
+
+If your custom endpoint returns errors, you may need to adjust the `compat` flags.
+
+| Error Symptom | Required `compat` Flag |
+|---------------|--------------------------|
+| `invalid role: developer` or similar role rejection | `supportsDeveloperRole: false` |
+| `unrecognized parameter: reasoning_effort` | `supportsReasoningEffort: false` |
+| Proxy rejects `eager_input_streaming` inside tool definitions (Anthropic-compatible only) | `supportsEagerToolInputStreaming: false` |
 
 ## Full Example
 
