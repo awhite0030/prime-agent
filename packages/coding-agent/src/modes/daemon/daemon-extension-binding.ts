@@ -9,7 +9,7 @@ import type {
 import type { SubagentRuntimeHost } from "../../core/rlm-runtime.js";
 import { createAgentConnectionState } from "../agent-connection/snapshot.js";
 import type { AgentConnectionState } from "../agent-connection/types.js";
-import { type Theme, theme } from "../interactive/theme/theme.js";
+import { initTheme, type Theme, theme } from "../interactive/theme/theme.js";
 import type { ActiveSessionState } from "./active-session-state.js";
 import { execEnvForSession, withClientEnv } from "./daemon-client-env.js";
 import {
@@ -126,6 +126,7 @@ function createExtensionUIContext(
 	state: ActiveSessionState,
 	broadcast: ActiveSessionBindingCallbacks["broadcast"],
 ): ExtensionUIContext {
+	initTheme();
 	const emitUiRequest = (method: string, payload: Record<string, unknown>): string => {
 		const id = randomUUID();
 		broadcast(state, {
@@ -206,6 +207,13 @@ function createExtensionUIContext(
 			emitUiRequest("setWorkingIndicator", { options: indicatorOptions }),
 		setHiddenThinkingLabel: (label) => emitUiRequest("setHiddenThinkingLabel", { label }),
 		setWidget: (key: string, content: unknown, widgetOptions?: ExtensionWidgetOptions) => {
+			if (typeof content === "function") {
+				emitUiRequest("notify", {
+					message: "setWidget with a component factory is not supported via RPC",
+					notifyType: "warning",
+				});
+				return;
+			}
 			if (content === undefined || Array.isArray(content)) {
 				emitUiRequest("setWidget", {
 					widgetKey: key,

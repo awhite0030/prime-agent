@@ -895,6 +895,17 @@ UI methods for user interaction. See [Custom UI](#custom-ui) for full details.
 
 `false` in print mode (`-p`) and JSON mode. `true` in interactive and RPC mode. In RPC mode, dialog methods (`select`, `confirm`, `input`, `editor`) work via the extension UI sub-protocol, and fire-and-forget methods (`notify`, `setStatus`, `setWidget`, `setTitle`, `setEditorText`) emit requests to the client. Some TUI-specific methods are no-ops or return defaults (see [rpc.md](rpc.md#extension-ui-protocol)).
 
+The following table details how UI methods degrade in daemon/RPC mode:
+
+| Method | Daemon/RPC behavior |
+|---|---|
+| `setWidget` (string array) | forwarded, rendered by client TUI |
+| `setWidget` (component factory) | silently dropped (or warns/throws) |
+| `custom` / `setFooter` / `setHeader` | no-op |
+| `theme` | returns the theme object (now initialized in workers) |
+| `setStatus` | forwarded, but built-in footer renders nothing |
+| terminal width (`process.stdout.columns`) | available if `COLUMNS` env var is forwarded (now allowlisted) |
+
 ### ctx.cwd
 
 Current working directory.
