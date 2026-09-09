@@ -2309,11 +2309,16 @@ export class AgentsViewMode implements Component, Focusable {
 	}
 
 	private resolveMissingSelectionAnchor(): void {
-		if (!this.selectionAnchorPending || this.savedCatalogRefreshPending) {
+		if (!this.selectionAnchorPending) {
+			return;
+		}
+		// A live subagent does not appear in the saved catalog. Do not wait for
+		// savedCatalogRefreshPending if the selection already resolves to it.
+		const row = this.rows[this.selectedIndex];
+		if (this.savedCatalogRefreshPending && (!row?.selectable || row.kind !== "subagent")) {
 			return;
 		}
 		this.selectionAnchorPending = false;
-		const row = this.rows[this.selectedIndex];
 		this.selectedActiveSessionId = row?.selectable ? (row.summary.activeSessionId ?? row.summary.id) : undefined;
 	}
 
