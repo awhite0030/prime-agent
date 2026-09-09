@@ -594,6 +594,9 @@ async function executeWithBusyKernelChoice(
 				kernelRestarted = true;
 				continue;
 			}
+			if (action === "cancel") {
+				void provisioner.kill().catch(() => undefined);
+			}
 			throw error;
 		}
 	}
