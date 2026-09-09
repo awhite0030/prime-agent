@@ -334,16 +334,20 @@ function ensureKernelPythonKey(pythonSkills: readonly BootstrapPythonSkill[]): s
 	].join("\0");
 }
 
+export function getEnvPath(name: string): string | undefined {
+	const value = process.env[name]?.trim();
+	return value ? value : undefined;
+}
+
 export function getKernelVenvDir(): string {
-	const override = process.env.PRIME_AGENT_KERNEL_VENV;
+	const override = getEnvPath("PRIME_AGENT_KERNEL_VENV");
 	if (override) return path.resolve(expandHome(override));
 	return path.join(os.homedir(), ".prime", "agent", "kernel-venv");
 }
 
 function getXdgKernelVenvDir(): string {
-	const dataHome = process.env.XDG_DATA_HOME
-		? path.resolve(expandHome(process.env.XDG_DATA_HOME))
-		: path.join(os.homedir(), ".local", "share");
+	const xdgDataHome = getEnvPath("XDG_DATA_HOME");
+	const dataHome = xdgDataHome ? path.resolve(expandHome(xdgDataHome)) : path.join(os.homedir(), ".local", "share");
 	return path.join(dataHome, "prime", "agent", "kernel-venv");
 }
 
