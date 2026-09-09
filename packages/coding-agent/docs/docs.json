@@ -32,6 +32,14 @@
           "path": "providers.md"
         },
         {
+          "title": "Custom Models",
+          "path": "models.md"
+        },
+        {
+          "title": "Custom Providers",
+          "path": "custom-provider.md"
+        },
+        {
           "title": "Settings",
           "path": "settings.md"
         },
@@ -75,14 +83,6 @@
         {
           "title": "Prime Agent Packages",
           "path": "packages.md"
-        },
-        {
-          "title": "Custom Models",
-          "path": "models.md"
-        },
-        {
-          "title": "Custom Providers",
-          "path": "custom-provider.md"
         }
       ]
     },
