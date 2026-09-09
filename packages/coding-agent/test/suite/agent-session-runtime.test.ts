@@ -42,6 +42,43 @@ type RuntimeSubagentMapAccess = {
 };
 
 describe("AgentSessionRuntime characterization", () => {
+	describe("issue-2048: fork keeps session model", () => {
+		it("should preserve the session model across forks", async () => {
+			let currentRuntimeOptions: Parameters<CreateAgentSessionRuntimeFactory>[0] | undefined;
+
+			const { runtime, faux } = await createRuntimeForTest((_pi) => {}, {
+				sessionConfig: { model: "faux/faux-1" },
+				onCreateRuntime: (options) => {
+					currentRuntimeOptions = options;
+				},
+			});
+
+			const newModel = faux.models.find((m) => m.id === "faux-2");
+			if (!newModel) throw new Error("model not found");
+			runtime.session.setScopedModels([{ model: newModel }]);
+
+			runtime.session.agent.state.model = newModel;
+			runtime.session.agent.state.thinkingLevel = "high";
+			runtime.session.agent.state.serviceTier = null;
+
+			expect(runtime.session.model?.id).toBe("faux-2");
+
+			await runtime.session.prompt("Say one");
+			const userMessages = runtime.session.getUserMessagesForForking();
+
+			// For the in-memory fallback, the fork method replaces the current runtime and wait, does createRuntime gets called?
+			// In-memory doesn't use the persistence path, it falls through to the very last block of fork!
+
+			// Wait, the in-memory fallback uses this.session.sessionManager! Which is the third fork path!
+			await runtime.fork(userMessages[0]!.entryId, { position: "at" });
+
+			expect(currentRuntimeOptions?.sessionOptions?.model?.id).toBe("faux-2");
+			expect(currentRuntimeOptions?.sessionOptions?.thinkingLevel).toBe("high");
+			expect(currentRuntimeOptions?.sessionOptions?.serviceTier).toBe(null);
+			expect(currentRuntimeOptions?.sessionOptions?.scopedModels?.[0]?.model.id).toBe("faux-2");
+		});
+	});
+
 	const cleanups: Array<() => Promise<void> | void> = [];
 
 	afterEach(async () => {

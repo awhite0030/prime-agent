@@ -1,0 +1,1 @@
+- Fixed `/fork` reverting to the initial CLI model and reasoning level instead of using the session's active selections ([#2048](https://github.com/PrimeIntellect-ai/prime-agent/issues/2048))
