@@ -528,6 +528,12 @@ export class AgentSessionRuntime implements SubagentRuntimeHost {
 		}
 
 		const previousSessionFile = this.session.sessionFile;
+		const sessionOptions = {
+			model: this.session.model,
+			thinkingLevel: this.session.thinkingLevel,
+			serviceTier: this.session.serviceTier,
+			scopedModels: [...this.session.scopedModels],
+		};
 		if (this.session.sessionManager.isPersisted()) {
 			const currentSessionFile = this.session.sessionFile;
 			if (!currentSessionFile) {
@@ -556,6 +562,7 @@ export class AgentSessionRuntime implements SubagentRuntimeHost {
 									previousSessionFile,
 								},
 								sessionConfig: this.sessionConfig,
+								sessionOptions,
 							}),
 						),
 					lease,
@@ -585,6 +592,7 @@ export class AgentSessionRuntime implements SubagentRuntimeHost {
 								previousSessionFile,
 							},
 							sessionConfig: this.sessionConfig,
+							sessionOptions,
 						}),
 					),
 				lease,
@@ -618,6 +626,7 @@ export class AgentSessionRuntime implements SubagentRuntimeHost {
 							previousSessionFile,
 						},
 						sessionConfig: this.sessionConfig,
+						sessionOptions,
 					}),
 				),
 			lease,
