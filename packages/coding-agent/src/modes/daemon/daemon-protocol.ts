@@ -230,6 +230,8 @@ export const DAEMON_CLIENT_ENV_KEYS = [
 	"HERDR_SOCKET_PATH",
 	"HERDR_TAB_ID",
 	"HERDR_WORKSPACE_ID",
+	"COLUMNS",
+	"LINES",
 ] as const;
 
 /** Collect the allowlisted env vars from the client process for the create command. */

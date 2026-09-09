@@ -5,7 +5,7 @@ import type {
 	ExtensionWidgetOptions,
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.js";
-import { type Theme, theme } from "../interactive/theme/theme.js";
+import { initTheme, type Theme, theme } from "../interactive/theme/theme.js";
 import type { RpcExtensionUIRequest, RpcExtensionUIResponse } from "./rpc-types.js";
 
 export interface RpcExtensionUiBridge {
@@ -15,6 +15,7 @@ export interface RpcExtensionUiBridge {
 }
 
 export function createRpcExtensionUiBridge(output: (request: RpcExtensionUIRequest) => void): RpcExtensionUiBridge {
+	initTheme();
 	const pending = new Map<string, (response: RpcExtensionUIResponse) => void>();
 	let closed = false;
 
@@ -96,6 +97,14 @@ export function createRpcExtensionUiBridge(output: (request: RpcExtensionUIReque
 		setWorkingIndicator: (_options?: WorkingIndicatorOptions) => {},
 		setHiddenThinkingLabel: (_label?: string) => {},
 		setWidget: (widgetKey: string, content: unknown, options?: ExtensionWidgetOptions) => {
+			if (typeof content === "function") {
+				fireAndForget({
+					method: "notify",
+					message: "setWidget with a component factory is not supported in RPC mode",
+					notifyType: "warning",
+				});
+				return;
+			}
 			if (content === undefined || Array.isArray(content)) {
 				fireAndForget({
 					method: "setWidget",

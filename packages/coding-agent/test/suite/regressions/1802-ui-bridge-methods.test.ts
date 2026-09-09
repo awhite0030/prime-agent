@@ -16,3 +16,19 @@ test("rpc extension bridge forwards widgetPlacement and setFooter", async () => 
 	expect(requests[1].method).toBe("notify");
 	expect(requests[1].notifyType).toBe("warning");
 });
+
+test("rpc extension bridge rejects component factory widgets and initializes theme", async () => {
+	const requests: any[] = [];
+	const bridge = createRpcExtensionUiBridge((request) => {
+		requests.push(request);
+	});
+
+	// #2065: setWidget silently dropped component factories
+	bridge.uiContext.setWidget("test-key", (() => {}) as any);
+	expect(requests[0].method).toBe("notify");
+	expect(requests[0].notifyType).toBe("warning");
+	expect(requests[0].message).toContain("not supported");
+
+	// #2065: theme was uninitialized in workers
+	expect(() => bridge.uiContext.theme.fg("accent", "text")).not.toThrow();
+});

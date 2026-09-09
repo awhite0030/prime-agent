@@ -1,0 +1,1 @@
+- Documented and fixed extension UI degradation in RPC mode: setWidget drops factories loudly, worker theme initializes properly, and COLUMNS/LINES are allowlisted.
