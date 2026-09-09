@@ -269,6 +269,38 @@ describe("AgentSession rlm recursion", () => {
 		return { child, completion, hasStarted: () => started };
 	}
 
+	function createPreparingChild(sessionDirName: string): {
+		child: AgentSession;
+		inputs: string[];
+		preparation: ReturnType<typeof deferred<void>>;
+		hasStarted: () => boolean;
+	} {
+		const preparation = deferred<void>();
+		const inputs: string[] = [];
+		let started = false;
+		const child = createSession({
+			depth: 1,
+			rlmSessionDir: join(tempDir, sessionDirName),
+			streamFn: (_model, context) => {
+				const input = userText(context);
+				inputs.push(input);
+				const stream = createAssistantMessageEventStream();
+				if (input === "automatic child preparation") {
+					started = true;
+					void preparation.promise.then(() => {
+						stream.push({ type: "done", reason: "stop", message: assistantMessage("preparation complete") });
+					});
+				} else {
+					queueMicrotask(() => {
+						stream.push({ type: "done", reason: "stop", message: assistantMessage(`ran ${input}`) });
+					});
+				}
+				return stream;
+			},
+		});
+		return { child, inputs, preparation, hasStarted: () => started };
+	}
+
 	it("propagates skipped-running deletion outcomes through the host handler", async () => {
 		const subagent = {
 			rlm_child_id: "running-child",
@@ -1321,6 +1353,64 @@ describe("AgentSession rlm recursion", () => {
 				details: { kind: "cancelled", reason: "Cancelled by user" },
 			});
 		});
+	});
+
+	it("queues the spawn task behind an already-running child startup turn", async () => {
+		const { child, inputs, preparation, hasStarted } = createPreparingChild("preparing-child");
+		const root = createSession({
+			subagentRuntimeHost: {
+				createRlmSubagentRuntime: async () => {
+					void child.prompt("automatic child preparation");
+					await waitFor(hasStarted);
+					return { session: child };
+				},
+				deleteRlmSubagentRuntime: async () => {},
+			},
+		});
+
+		const spawned = await root.runRlmChild("spawn task", { name: "preparing-worker" });
+		await waitFor(hasStarted);
+		preparation.resolve();
+		await root.waitForRlmQuiescence();
+
+		expect(inputs).toEqual(["automatic child preparation", "spawn task"]);
+		expect((await root.listRlmSubagents()).subagents).toContainEqual(
+			expect.objectContaining({ rlm_child_id: spawned.rlm_child_id, status: "completed" }),
+		);
+		expect(
+			root.messages.some((message) => message.role === "custom" && message.customType === "rlm_child_failure"),
+		).toBe(false);
+	});
+
+	it("cancels a spawn task queued behind a child startup turn", async () => {
+		const { child, inputs, preparation, hasStarted } = createPreparingChild("cancelled-preparing-child");
+		const root = createSession({
+			subagentRuntimeHost: {
+				createRlmSubagentRuntime: async () => {
+					void child.prompt("automatic child preparation");
+					await waitFor(hasStarted);
+					return { session: child };
+				},
+				deleteRlmSubagentRuntime: async () => {},
+			},
+		});
+
+		const spawned = await root.runRlmChild("cancelled spawn task", { name: "cancelled-preparing-worker" });
+		await waitFor(() => child.queuedActionCount === 1);
+		expect(root.cancelRlmChildRun(spawned.rlm_child_id)).toBe(true);
+		await waitFor(() => child.queuedActionCount === 0);
+		preparation.resolve();
+		await root.waitForRlmQuiescence();
+
+		expect(inputs).toEqual(["automatic child preparation"]);
+		const terminalNotices = root.messages.filter(
+			(message) => message.role === "custom" && message.customType === "rlm_child_terminal_notice",
+		);
+		expect(terminalNotices).toHaveLength(1);
+		expect(terminalNotices[0]).toMatchObject({ details: { kind: "cancelled", reason: "Cancelled by user" } });
+		expect(
+			root.messages.some((message) => message.role === "custom" && message.customType === "rlm_child_failure"),
+		).toBe(false);
 	});
 
 	it("injects exactly one notice with a preview when a child completes without replying", async () => {

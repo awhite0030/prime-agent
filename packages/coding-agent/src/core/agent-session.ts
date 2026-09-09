@@ -10619,6 +10619,7 @@ export class AgentSession {
 		if (!requestedSessionName) await this._assertRlmSubagentSessionNameAvailable(sessionName);
 		const startedAt = Date.now();
 		const parentAssistantForUsage = this._findLastAssistantMessage();
+		const taskPromptAbortController = new AbortController();
 		let runningToolCount = 0;
 		let childSession: AgentSession | undefined;
 		const run: RlmChildRun = {
@@ -10654,7 +10655,10 @@ export class AgentSession {
 			childSession = child;
 			if (this._activeRlmChildRuns.get(run.id) !== run) return;
 			run.session = child;
-			run.abort = () => void child.abort();
+			run.abort = () => {
+				taskPromptAbortController.abort();
+				void child.abort();
+			};
 			run.publication.resolve();
 			// Cancellation may have been admitted while runtime construction was
 			// blocked and run.abort was still a no-op.
@@ -10810,6 +10814,8 @@ export class AgentSession {
 					expandPromptTemplates: false,
 					source: "extension",
 					customMessage: spawnMessage,
+					signal: taskPromptAbortController.signal,
+					streamingBehavior: "followUp",
 				});
 				await child.waitForRlmQuiescence();
 				if (run.error) throw new Error(run.error);
