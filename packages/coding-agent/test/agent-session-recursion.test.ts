@@ -2262,7 +2262,7 @@ describe("AgentSession rlm recursion", () => {
 				session_id: "failed-session",
 				session_name: "failed-worker",
 				session_dir: join(tempDir, "failed-child"),
-				status: "error" as const,
+				status: "running" as const,
 			},
 			{
 				rlm_child_id: "finished-child",
