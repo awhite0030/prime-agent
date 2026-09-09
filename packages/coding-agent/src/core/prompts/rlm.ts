@@ -14,7 +14,7 @@ export interface RlmPromptOptions {
 const LONG_RUNNING_WORK_PROMPT = [
 	"For slow or independently completing work, use a nonblocking control loop: start the work, record its handle or output location, then end your turn. Read the result on a later turn or when a reply arrives.",
 	"When delegation is available and useful, assign independent substantive tasks to separate workers. Start independent workers without waiting for each one sequentially, and let them run in parallel.",
-	"Do not keep the turn open by polling with `time.sleep()` or shell `sleep`, and do not replace polling with a long blocking `await`. Await only the short operation needed to start work or inspect a result that is already available; otherwise end the turn.",
+	"Do not keep the turn open by polling with `time.sleep()`, shell `sleep`, or `asyncio.sleep()` (including `await asyncio.sleep()`), and do not replace polling with a long blocking `await`. Await only the short operation needed to start work or inspect a result that is already available; otherwise end the turn. If a wake-up is needed while work runs, create an RLM heartbeat with a specific check instruction instead of sleeping, and delete it when the work completes.",
 ].join("\n");
 
 const USER_PROGRESS_PROMPT =
