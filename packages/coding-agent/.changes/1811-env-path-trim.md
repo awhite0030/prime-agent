@@ -1,0 +1,1 @@
+- Fixed an issue where paths consisting of only whitespaces for `PRIME_AGENT_KERNEL_VENV` and `XDG_DATA_HOME` environment variables incorrectly bypassed their fallback defaults ([#1811](https://github.com/PrimeIntellect-ai/prime-agent/issues/1811)).
