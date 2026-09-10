@@ -6558,6 +6558,23 @@ export class AgentDaemon {
 		// Abort in-flight status work before any await/dispose so it can't write
 		// agent_status to a session being torn down.
 		this.summarizer.forget(state.activeSessionId);
+
+		cancelPendingExtensionUiRequests(state);
+		if (reason === "killed" || reason === "shutdown" || reason === "replaced" || reason === "update") {
+			await this.abortBashForClose(state);
+		}
+		if (reason === "update") {
+			state.runtime.session.abortForUpdateRestart();
+		}
+		if (reason === "killed") {
+			const abort = state.runtime.session.abort().catch(() => undefined);
+			if (waitForAbort) {
+				await abort;
+			}
+		} else if (reason === "shutdown" || reason === "replaced") {
+			await state.runtime.session.abort().catch(() => undefined);
+		}
+
 		const cascadeError = cascadeChildren
 			? await this.closeChildSessions(state, reason, waitForAbort, descendants, disposal)
 			: undefined;
@@ -6575,21 +6592,7 @@ export class AgentDaemon {
 				persistError = error;
 			}
 		}
-		cancelPendingExtensionUiRequests(state);
-		if (reason === "killed" || reason === "shutdown" || reason === "replaced" || reason === "update") {
-			await this.abortBashForClose(state);
-		}
-		if (reason === "update") {
-			state.runtime.session.abortForUpdateRestart();
-		}
-		if (reason === "killed") {
-			const abort = state.runtime.session.abort().catch(() => undefined);
-			if (waitForAbort) {
-				await abort;
-			}
-		} else if (reason === "shutdown" || reason === "replaced") {
-			await state.runtime.session.abort().catch(() => undefined);
-		}
+
 		this.recordWorkerRecoveryState(state, `closed:${reason}`, false);
 		state.unsubscribe?.();
 		let disposeError: unknown;
