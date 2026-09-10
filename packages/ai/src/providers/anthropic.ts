@@ -333,13 +333,38 @@ async function* iterateSseMessages(
 	const state: SseDecoderState = { event: null, data: [], raw: [] };
 	let buffer = "";
 
+	let abortPromise: Promise<never> | undefined;
+	let abortHandler: (() => void) | undefined;
+	if (signal) {
+		abortPromise = new Promise<never>((_, reject) => {
+			abortHandler = () => {
+				if (typeof DOMException !== "undefined") {
+					reject(new DOMException("Request was aborted", "AbortError"));
+				} else {
+					reject(new Error("Request was aborted"));
+				}
+			};
+			signal.addEventListener("abort", abortHandler);
+		});
+		// Prevent unhandled rejection if abort triggers after read loops
+		abortPromise.catch(() => {});
+	}
+
 	try {
 		while (true) {
 			if (signal?.aborted) {
-				throw new Error("Request was aborted");
+				if (typeof DOMException !== "undefined") {
+					throw new DOMException("Request was aborted", "AbortError");
+				} else {
+					throw new Error("Request was aborted");
+				}
 			}
 
-			const { value, done } = await reader.read();
+			const readPromise = reader.read();
+			// Ensure readPromise doesn't cause unhandled rejection if it completes/fails after race aborts
+			readPromise.catch(() => {});
+
+			const { value, done } = await (abortPromise ? Promise.race([readPromise, abortPromise]) : readPromise);
 			if (done) {
 				break;
 			}
@@ -379,6 +404,9 @@ async function* iterateSseMessages(
 			yield trailingEvent;
 		}
 	} finally {
+		if (signal && abortHandler) {
+			signal.removeEventListener("abort", abortHandler);
+		}
 		reader.releaseLock();
 	}
 }
