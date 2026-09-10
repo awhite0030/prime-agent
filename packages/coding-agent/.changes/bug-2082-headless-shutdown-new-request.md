@@ -1,0 +1,1 @@
+- Fixed an issue where the main session would start a new model request after generating a subagent terminal notice during headless shutdown.
