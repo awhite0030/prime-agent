@@ -36,6 +36,17 @@ function normalizeAtPrefix(filePath: string): string {
 	return filePath.startsWith("@") ? filePath.slice(1) : filePath;
 }
 
+export function expandLiteralPath(filePath: string): string {
+	const stripped = normalizeAtPrefix(filePath);
+	if (stripped === "~") {
+		return os.homedir();
+	}
+	if (stripped.startsWith("~/")) {
+		return os.homedir() + stripped.slice(1);
+	}
+	return stripped;
+}
+
 export function expandPath(filePath: string): string {
 	const normalized = normalizeUnicodeSpaces(normalizeAtPrefix(filePath));
 	if (normalized === "~") {
@@ -60,6 +71,12 @@ export function resolveToCwd(filePath: string, cwd: string): string {
 }
 
 export function resolveReadPath(filePath: string, cwd: string): string {
+	const literalExpanded = expandLiteralPath(filePath);
+	const literalResolved = isAbsolute(literalExpanded) ? literalExpanded : resolvePath(cwd, literalExpanded);
+	if (fileExists(literalResolved)) {
+		return literalResolved;
+	}
+
 	const resolved = resolveToCwd(filePath, cwd);
 
 	if (fileExists(resolved)) {

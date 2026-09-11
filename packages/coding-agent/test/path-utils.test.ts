@@ -64,6 +64,20 @@ describe("path-utils", () => {
 			expect(result).toBe(join(tempDir, fileName));
 		});
 
+		it("should resolve literal path with Unicode space over normalized variant", () => {
+			// #2161: If a literal file with a Unicode space exists, we should use it.
+			const unicodeSpaceName = "report draft.txt";
+			const normalSpaceName = "report draft.txt";
+
+			// Create both
+			writeFileSync(join(tempDir, unicodeSpaceName), "unicode");
+			writeFileSync(join(tempDir, normalSpaceName), "normal");
+
+			// Requesting with the unicode space should give us the literal one
+			const result = resolveReadPath(unicodeSpaceName, tempDir);
+			expect(result).toBe(join(tempDir, unicodeSpaceName));
+		});
+
 		it("should handle NFC vs NFD Unicode normalization (macOS filenames with accents)", () => {
 			// macOS stores filenames in NFD (decomposed) form:
 			//   é = e + combining acute accent (U+0301)
