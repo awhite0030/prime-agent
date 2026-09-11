@@ -445,6 +445,14 @@ function getBedrockBaseUrl(modelId: string): string {
 	return "https://bedrock-runtime.us-east-1.amazonaws.com";
 }
 
+function getBedrockMantleBaseUrl(modelId: string): string {
+	if (modelId.startsWith("eu.") || modelId.startsWith("global.eu.")) return "https://bedrock-mantle.eu-central-1.api.aws/openai/v1";
+	if (modelId.startsWith("au.") || modelId.startsWith("global.au.")) return "https://bedrock-mantle.ap-southeast-2.api.aws/openai/v1";
+	if (modelId.startsWith("jp.") || modelId.startsWith("global.jp.")) return "https://bedrock-mantle.ap-northeast-1.api.aws/openai/v1";
+	return "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
+}
+
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
@@ -999,12 +1007,14 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					continue;
 				}
 
+				const isMantle = id.startsWith("openai.gpt-5") || id.startsWith("global.openai.gpt-5");
+
 				models.push({
 					id,
 					name: m.name || id,
-					api: "bedrock-converse-stream" as const,
+					api: (isMantle ? "openai-responses" : "bedrock-converse-stream") as any,
 					provider: "amazon-bedrock" as const,
-					baseUrl: getBedrockBaseUrl(id),
+					baseUrl: isMantle ? getBedrockMantleBaseUrl(id) : getBedrockBaseUrl(id),
 					reasoning: m.reasoning === true,
 					input: (m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"]) as ("text" | "image")[],
 					cost: {
