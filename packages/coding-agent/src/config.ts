@@ -48,6 +48,8 @@ interface SelfUpdateCommandStep {
 	command: string;
 	args: string[];
 	display: string;
+
+	env?: Record<string, string>;
 }
 
 export interface SelfUpdateCommand extends SelfUpdateCommandStep {
@@ -74,11 +76,16 @@ function makeSelfUpdateCommand(
 	};
 }
 
-function makeSelfUpdateCommandStep(command: string, args: string[]): SelfUpdateCommandStep {
+function makeSelfUpdateCommandStep(
+	command: string,
+	args: string[],
+	env?: Record<string, string>,
+): SelfUpdateCommandStep {
 	return {
 		command,
 		args,
 		display: [command, ...args].map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(" "),
+		...(env ? { env } : {}),
 	};
 }
 
@@ -150,7 +157,7 @@ function getDefaultUpdatePackageName(installedPackageName: string, updateSpec: s
 	return updateSpec;
 }
 
-function getSelfUpdateCommandForMethod(
+export function getSelfUpdateCommandForMethod(
 	method: InstallMethod,
 	installedPackageName: string,
 	updateSpec = installedPackageName,
@@ -190,7 +197,13 @@ function getSelfUpdateCommandForMethod(
 			const [command = "npm", ...npmArgs] = npmCommand ?? [];
 			const inferred = npmCommand?.length ? undefined : getInferredNpmInstall();
 			const prefixArgs = [...npmArgs, ...(inferred ? ["--prefix", inferred.prefix] : [])];
-			const installStep = makeSelfUpdateCommandStep(command, [...prefixArgs, "install", "-g", updateSpec]);
+			const env: Record<string, string> | undefined = isDirectPackageArtifactSpec(updateSpec)
+				? {
+						npm_config_allow_remote: "all",
+						npm_config_allow_scripts: updateSpec,
+					}
+				: undefined;
+			const installStep = makeSelfUpdateCommandStep(command, [...prefixArgs, "install", "-g", updateSpec], env);
 			const uninstallStep =
 				updatePackageName === installedPackageName
 					? undefined
