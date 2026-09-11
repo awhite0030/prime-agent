@@ -742,6 +742,7 @@ export class DaemonSupervisor {
 		private readonly socketPath: string,
 		options: DaemonSupervisorOptions,
 	) {
+		this.installCrashHandlers();
 		this.ready = new Promise<void>((resolveReady, rejectReady) => {
 			this.markReady = resolveReady;
 			this.rejectReady = rejectReady;
@@ -6689,6 +6690,23 @@ export class DaemonSupervisor {
 			client.backpressured = true;
 		}
 		return accepted;
+	}
+
+	private installCrashHandlers(): void {
+		const uncaughtHandler = (error: Error) => {
+			this.log(`uncaught exception: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
+			void this.shutdown(1, false);
+		};
+		process.on("uncaughtException", uncaughtHandler);
+		this.signalCleanupHandlers.push(() => process.off("uncaughtException", uncaughtHandler));
+
+		const unhandledHandler = (reason: unknown) => {
+			this.log(
+				`unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`,
+			);
+		};
+		process.on("unhandledRejection", unhandledHandler);
+		this.signalCleanupHandlers.push(() => process.off("unhandledRejection", unhandledHandler));
 	}
 
 	private registerSignalHandlers(): void {
