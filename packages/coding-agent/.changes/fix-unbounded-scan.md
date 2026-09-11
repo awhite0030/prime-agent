@@ -1,0 +1,1 @@
+- Added guidance against unbounded file scans and eager bulk reads to the agent system prompt.
