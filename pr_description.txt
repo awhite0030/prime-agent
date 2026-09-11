@@ -1,4 +1,0 @@
-Root cause: The underlying `ReadableStream.getReader().read()` in Node's fetch implementation blocks indefinitely and does not respect the provided `AbortSignal` for timeouts during an `anthropic-messages` stream.
-Fix: Wrapped `reader.read()` inside `iterateSseMessages` in a `Promise.race` against a custom abort promise that listens to the `AbortSignal`. To avoid `UnhandledPromiseRejection` crashes when the slower promise eventually rejects, `.catch(() => {})` is safely attached to both promises.
-Validation: Wrote a regression test in `packages/ai/test/suite/regressions/anthropic-abort-hang.test.ts` that mocks a hanging provider response and ensures the stream gracefully emits an abort error within 1 second. Tests pass successfully.
-Upstream discussion: https://github.com/PrimeIntellect-ai/prime-agent/discussions/2093
