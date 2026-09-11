@@ -104,7 +104,11 @@ describe("skills", () => {
 			});
 
 			expect(skills).toHaveLength(1);
-			expect(diagnostics.some((d: ResourceDiagnostic) => d.message.includes("invalid characters"))).toBe(true);
+			expect(
+				diagnostics.some((d: ResourceDiagnostic) =>
+					d.message.includes("name contains invalid characters but was still loaded"),
+				),
+			).toBe(true);
 		});
 
 		it("should warn when name exceeds 64 characters", () => {
