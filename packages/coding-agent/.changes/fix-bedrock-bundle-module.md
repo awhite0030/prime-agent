@@ -1,0 +1,1 @@
+- Fixed missing Amazon Bedrock CLI bundle module, preventing start up errors.

@@ -26,7 +26,8 @@ import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copi
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
 import { buildBaseOptions } from "./simple-options.js";
 
-const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
+const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode", "amazon-bedrock"]);
+const importNodeOnlyProvider = (specifier: string): Promise<unknown> => import(specifier);
 
 /**
  * Resolve cache retention preference.
@@ -75,7 +76,10 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			content: [],
 			api: model.api as Api,
 			provider: model.provider,
-			model: model.id,
+			model:
+				model.provider === "amazon-bedrock" && model.id.startsWith("global.")
+					? model.id.slice("global.".length)
+					: model.id,
 			usage: {
 				input: 0,
 				output: 0,
@@ -92,7 +96,7 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention);
 			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
-			const client = createClient(model, context, apiKey, options?.headers, cacheSessionId);
+			const client = await createClient(model, context, apiKey, options?.headers, cacheSessionId);
 			let params = buildParams(model, context, options);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
@@ -146,7 +150,7 @@ export const streamSimpleOpenAIResponses: StreamFunction<"openai-responses", Sim
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
 	const apiKey = options?.apiKey || getEnvApiKey(model.provider);
-	if (!apiKey) {
+	if (!apiKey && model.provider !== "amazon-bedrock") {
 		throw new Error(`No API key for provider: ${model.provider}`);
 	}
 
@@ -160,14 +164,14 @@ export const streamSimpleOpenAIResponses: StreamFunction<"openai-responses", Sim
 	} satisfies OpenAIResponsesOptions);
 };
 
-function createClient(
+async function createClient(
 	model: Model<"openai-responses">,
 	context: Context,
 	apiKey?: string,
 	optionsHeaders?: Record<string, string>,
 	sessionId?: string,
 ) {
-	if (!apiKey) {
+	if (!apiKey && model.provider !== "amazon-bedrock") {
 		if (!process.env.OPENAI_API_KEY) {
 			throw new Error(
 				"OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass it as an argument.",
@@ -206,6 +210,29 @@ function createClient(
 					"cf-aig-authorization": `Bearer ${apiKey}`,
 				}
 			: headers;
+
+	if (model.provider === "amazon-bedrock") {
+		const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
+		const { bedrock } = (await importNodeOnlyProvider(
+			"openai/providers/bedrock/aws",
+		)) as typeof import("openai/providers/bedrock/aws");
+
+		const bedrockHeaders = { ...defaultHeaders };
+		delete bedrockHeaders.session_id;
+		delete bedrockHeaders["x-client-request-id"];
+		delete bedrockHeaders.Authorization;
+		delete bedrockHeaders["x-request-id"];
+
+		return new OpenAI({
+			provider: bedrock({
+				region,
+				baseURL: model.baseUrl,
+				...(process.env.AWS_PROFILE ? { profile: process.env.AWS_PROFILE } : {}),
+			}),
+			maxRetries: 0,
+			defaultHeaders: bedrockHeaders,
+		});
+	}
 
 	return new OpenAI({
 		apiKey,

@@ -1,0 +1,1 @@
+- Correctly routes Bedrock OpenAI GPT-5 frontier models through the Mantle Responses API.
