@@ -1,0 +1,1 @@
+- Fixed self-update failing under npm 12 by applying the same policy overrides (`allow-remote=all`, `allow-scripts=<tarball>`) used by the installer when fetching the release artifact ([#2163](https://github.com/PrimeIntellect-ai/prime-agent/issues/2163)).
