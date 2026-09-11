@@ -37,7 +37,7 @@ Python state survives across tool calls and compaction. Variables, imports, func
 ```python
 from pathlib import Path
 
-config_files = list(Path(".").rglob("*.toml"))
+config_files = list(Path(".").glob("*.toml"))
 large_files = [path for path in config_files if path.stat().st_size > 10_000]
 ```
 
