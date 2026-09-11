@@ -2462,7 +2462,11 @@ export class DaemonSupervisor {
 				const target = await this.savedSessionNameReservationInput(command.sessionPath, command.name.trim());
 				return await this.withSessionNameReservation(target, async () => {
 					await this.assertSupervisorSavedSessionNameAvailable(command.sessionPath, target.name);
-					if (!command.activeSessionId) {
+
+					const entry = this.roster().bySessionFile(canonicalSessionPath(command.sessionPath));
+					const activeSessionId = command.activeSessionId ?? entry?.summary.activeSessionId;
+
+					if (!activeSessionId) {
 						await this.catalog.rename(command.sessionPath, command.name);
 						// Third rename write point: an offline saved-session rename
 						// changes the name the ledger carries for that child.
@@ -2473,13 +2477,12 @@ export class DaemonSupervisor {
 									`failed to append RLM ledger rename: ${error instanceof Error ? error.message : String(error)}`,
 								);
 							});
-						const entry = this.roster().bySessionFile(canonicalSessionPath(command.sessionPath));
 						if (entry) {
 							this.writeRosterEntry({ ...entry, summary: { ...entry.summary, sessionName: target.name } });
 						}
 						return success(command.id, command.type);
 					}
-					const match = await this.findWorkerForClient(client, command.activeSessionId);
+					const match = await this.findWorkerForClient(client, activeSessionId);
 					return await this.forwardToWorker(match.worker, {
 						...command,
 						activeSessionId: match.summary.activeSessionId ?? match.summary.id,

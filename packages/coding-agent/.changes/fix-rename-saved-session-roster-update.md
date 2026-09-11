@@ -1,0 +1,1 @@
+- Fixed an issue where renaming a live session via `rename_saved_session` without providing an active session ID did not immediately update the agents view roster.
