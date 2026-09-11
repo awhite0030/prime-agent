@@ -8,6 +8,7 @@ import {
 	readFileSync,
 	renameSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { createConnection, type Socket } from "node:net";
@@ -126,7 +127,11 @@ async function createPaths(): Promise<TestPaths> {
 	const harness = await createHarness();
 	harnesses.push(harness);
 	const executablePath = join(harness.tempDir, APP_NAME);
-	linkSync(process.execPath, executablePath);
+	if (process.platform === "darwin") {
+		symlinkSync(process.execPath, executablePath);
+	} else {
+		linkSync(process.execPath, executablePath);
+	}
 	const socketTmpDir = `/tmp/eng-4603-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	mkdirSync(socketTmpDir, { recursive: true, mode: 0o700 });
 	socketTempDirs.add(socketTmpDir);
@@ -277,7 +282,11 @@ function registerFixtureOwnedProcesses(): void {
 	}
 }
 
-function registerFixtureRecord(value: unknown, role: "supervisor" | "worker", path: string): FixtureProcessIdentity {
+function registerFixtureRecord(
+	value: unknown,
+	role: "supervisor" | "worker",
+	path: string,
+): FixtureProcessIdentity | undefined {
 	if (!value || typeof value !== "object") {
 		throw new Error(`Invalid fixture process record: ${path}`);
 	}
@@ -291,6 +300,7 @@ function registerFixtureRecord(value: unknown, role: "supervisor" | "worker", pa
 	) {
 		throw new Error(`Invalid fixture process identity: ${path}`);
 	}
+	if (record.pid === process.pid) return undefined;
 	return registerFixtureProcess(record.pid, record.processStartId, role)!;
 }
 
