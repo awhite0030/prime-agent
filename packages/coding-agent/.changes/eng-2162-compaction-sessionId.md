@@ -1,0 +1,1 @@
+- Fixed an issue where the compaction summarizer failed on OpenCode free tier due to missing `sessionId`.

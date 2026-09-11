@@ -523,6 +523,7 @@ export async function generateSummary(
 	customInstructions?: string,
 	previousSummary?: string,
 	thinkingLevel?: ThinkingLevel,
+	sessionId?: string,
 ): Promise<SummarySlice> {
 	const maxTokens = Math.floor(0.8 * reserveTokens);
 
@@ -546,8 +547,8 @@ export async function generateSummary(
 
 	const completionOptions =
 		model.reasoning && thinkingLevel && thinkingLevel !== "off"
-			? { maxTokens, signal, apiKey, headers, reasoning: thinkingLevel }
-			: { maxTokens, signal, apiKey, headers };
+			? { maxTokens, signal, apiKey, headers, reasoning: thinkingLevel, sessionId }
+			: { maxTokens, signal, apiKey, headers, sessionId };
 
 	const response = await completeSimple(
 		model,
@@ -692,6 +693,7 @@ export async function compact(
 	signal?: AbortSignal,
 	thinkingLevel?: ThinkingLevel,
 	summaryCall: SummaryCallRunner = (call) => call(headers),
+	sessionId?: string,
 ): Promise<CompactionResult> {
 	const {
 		firstKeptEntryId,
@@ -721,6 +723,7 @@ export async function compact(
 							customInstructions,
 							previousSummary,
 							thinkingLevel,
+							sessionId,
 						),
 					)
 				: Promise.resolve<SummarySlice>({ summary: "No prior history." }),
@@ -733,6 +736,7 @@ export async function compact(
 					callHeaders,
 					signal,
 					thinkingLevel,
+					sessionId,
 				),
 			),
 		]);
@@ -750,6 +754,7 @@ export async function compact(
 				customInstructions,
 				previousSummary,
 				thinkingLevel,
+				sessionId,
 			),
 		);
 		slices.push(result);
@@ -788,6 +793,7 @@ async function generateTurnPrefixSummary(
 	headers?: Record<string, string>,
 	signal?: AbortSignal,
 	thinkingLevel?: ThinkingLevel,
+	sessionId?: string,
 ): Promise<SummarySlice> {
 	const maxTokens = Math.floor(0.5 * reserveTokens); // Smaller budget for turn prefix
 	const llmMessages = convertToLlm(messages);
@@ -805,8 +811,8 @@ async function generateTurnPrefixSummary(
 		model,
 		{ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages },
 		model.reasoning && thinkingLevel && thinkingLevel !== "off"
-			? { maxTokens, signal, apiKey, headers, reasoning: thinkingLevel }
-			: { maxTokens, signal, apiKey, headers },
+			? { maxTokens, signal, apiKey, headers, reasoning: thinkingLevel, sessionId }
+			: { maxTokens, signal, apiKey, headers, sessionId },
 	);
 
 	if (response.stopReason === "error") {
