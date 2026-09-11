@@ -7626,6 +7626,7 @@ export class AgentSession {
 					signal,
 					this.thinkingLevel,
 					summaryCall,
+					this.sessionId,
 				));
 			}
 
