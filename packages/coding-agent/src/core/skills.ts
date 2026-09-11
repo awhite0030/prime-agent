@@ -131,7 +131,15 @@ function validateName(name: string, parentDirName: string): string[] {
 	}
 
 	if (!/^[a-z0-9-]+$/.test(name)) {
-		errors.push(`name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)`);
+		const suggestedName =
+			name
+				.toLowerCase()
+				.replace(/[^a-z0-9-]/g, "-")
+				.replace(/-+/g, "-")
+				.replace(/^-|-$/g, "") || "valid-name";
+		errors.push(
+			`name contains invalid characters but was still loaded. To comply with the standard, rename the directory and frontmatter to a portable name (must be lowercase a-z, 0-9, hyphens only, e.g. "${suggestedName}")`,
+		);
 	}
 
 	if (name.startsWith("-") || name.endsWith("-")) {

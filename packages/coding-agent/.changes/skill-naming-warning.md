@@ -1,0 +1,1 @@
+- Clarified the warning message when a loaded skill has a non-standard name to emphasize that the skill still loads and suggest a portable name.
