@@ -1,0 +1,1 @@
+- Fixed @file attachments resolving to the wrong file when the literal filename contains Unicode spaces (e.g., non-breaking space) and a regular-space variant also exists ([#2161](https://github.com/PrimeIntellect-ai/prime-agent/issues/2161))
