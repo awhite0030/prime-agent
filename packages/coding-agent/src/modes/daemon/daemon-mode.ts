@@ -538,6 +538,7 @@ export class AgentDaemon {
 	private readonly agentDir: string;
 	private readonly cronScheduler: AgentCronScheduler;
 	private readonly agentMessageRateLimiter = new AgentSessionMessageRateLimiter();
+	private readonly recentAgentMessages = new Map<string, AgentSessionMessageDeliveryStatus | "uncertain">();
 	// Sessions inserted into `sessions` but still awaiting extension binding;
 	// visible to host controllers during bind, excluded from targeting.
 	private readonly bindingSessions = new Set<string>();
@@ -2803,13 +2804,27 @@ export class AgentDaemon {
 
 	private async waitForPassivation(sessionFile: string): Promise<void> {
 		const passivation = this.findPassivationBySessionFile(sessionFile);
-		if (passivation) await passivation.catch(() => {});
+		if (passivation) {
+			let timer: NodeJS.Timeout | undefined;
+			const timeoutPromise = new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), 60_000);
+			});
+			const didComplete = await Promise.race([passivation.then(() => true).catch(() => true), timeoutPromise]);
+			if (timer) clearTimeout(timer);
+			if (!didComplete) {
+				throw new Error(`Timed out waiting for session passivation: ${sessionFile}`);
+			}
+		}
 	}
 
 	private async hydratePassiveRlmSubagent(
 		passive: PassiveRlmSubagent,
 		clientEnv?: Record<string, string>,
+		attempt = 0,
 	): Promise<ActiveSessionState> {
+		if (attempt > 32) {
+			throw new Error(`Timed out waiting for subagent hydration: ${passive.entry.childId}`);
+		}
 		if (this.updateRestart !== undefined) {
 			throw new BoundSessionUnavailableError("Daemon is preparing an update restart");
 		}
@@ -2828,7 +2843,7 @@ export class AgentDaemon {
 			) {
 				return this.waitForBoundSession(resident);
 			}
-			return this.hydratePassiveRlmSubagent(refreshed, clientEnv);
+			return this.hydratePassiveRlmSubagent(refreshed, clientEnv, attempt + 1);
 		};
 		const rootParent = passive.rootParentState;
 		if (!rootParent) {
@@ -2875,22 +2890,46 @@ export class AgentDaemon {
 		entry: PassiveRlmSubagentEntry,
 		restoreActiveSessionId?: string,
 		clientEnv?: Record<string, string>,
+		attempt = 0,
 	): Promise<ActiveSessionState> {
+		if (attempt > 32) {
+			throw new Error(`Timed out waiting for subagent rehydration: ${entry.childId}`);
+		}
 		if (this.updateRestart !== undefined) {
 			throw new BoundSessionUnavailableError("Daemon is preparing an update restart");
 		}
 		const sessionKey = resolve(entry.sessionFile);
 		const reservation = this.reservingSessionOpens.get(sessionKey);
 		if (reservation) {
-			await reservation;
-			return this.rehydrateCompletedRlmSubagent(parentState, entry, restoreActiveSessionId, clientEnv);
+			let timer: NodeJS.Timeout | undefined;
+			const timeoutPromise = new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, 60_000);
+			});
+			await Promise.race([reservation.catch(() => {}), timeoutPromise]);
+			if (timer) clearTimeout(timer);
+			return this.rehydrateCompletedRlmSubagent(parentState, entry, restoreActiveSessionId, clientEnv, attempt + 1);
 		}
 		const pending = this.openingSessions.get(sessionKey);
 		if (pending) {
+			let timer: NodeJS.Timeout | undefined;
+			const timeoutPromise = new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), 60_000);
+			});
+			const didComplete = await Promise.race([pending.then(() => true).catch(() => true), timeoutPromise]);
+			if (timer) clearTimeout(timer);
+			if (!didComplete) {
+				throw new Error(`Timed out waiting for subagent rehydration: ${entry.childId}`);
+			}
 			const state = await pending;
 			if (state.runtime.metadata.kind !== "subagent" || state.runtime.metadata.rlmChildId !== entry.childId) {
 				if (this.openingSessions.get(sessionKey) === pending) this.openingSessions.delete(sessionKey);
-				return this.rehydrateCompletedRlmSubagent(parentState, entry, restoreActiveSessionId, clientEnv);
+				return this.rehydrateCompletedRlmSubagent(
+					parentState,
+					entry,
+					restoreActiveSessionId,
+					clientEnv,
+					attempt + 1,
+				);
 			}
 			return this.waitForBoundSession(state);
 		}
@@ -2908,6 +2947,15 @@ export class AgentDaemon {
 		// so no caller can acquire a second lease/runtime while hydration binds.
 		this.openingSessions.set(sessionKey, hydration);
 		try {
+			let timer: NodeJS.Timeout | undefined;
+			const timeoutPromise = new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), 60_000);
+			});
+			const didComplete = await Promise.race([hydration.then(() => true).catch(() => true), timeoutPromise]);
+			if (timer) clearTimeout(timer);
+			if (!didComplete) {
+				throw new Error(`Timed out waiting for subagent rehydration: ${entry.childId}`);
+			}
 			return await hydration;
 		} finally {
 			if (this.openingSessions.get(sessionKey) === hydration) {
@@ -2919,7 +2967,15 @@ export class AgentDaemon {
 	private async waitForBoundSession(state: ActiveSessionState): Promise<ActiveSessionState> {
 		const completion = this.bindingCompletions.get(state.activeSessionId);
 		if (completion) {
-			await completion;
+			let timer: NodeJS.Timeout | undefined;
+			const timeoutPromise = new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), 60_000);
+			});
+			const didComplete = await Promise.race([completion.then(() => true), timeoutPromise]);
+			if (timer) clearTimeout(timer);
+			if (!didComplete) {
+				throw new Error(`Timed out waiting for bound session: ${state.activeSessionId}`);
+			}
 		}
 		if (this.sessions.get(state.activeSessionId) !== state || this.bindingSessions.has(state.activeSessionId)) {
 			throw new BoundSessionUnavailableError(`Active session ${state.activeSessionId} did not finish initializing`);
@@ -3082,6 +3138,7 @@ export class AgentDaemon {
 					message: input.message,
 					fromState: requireCurrentState(),
 					origin: "agent",
+					messageId: input.messageId,
 				}),
 		};
 	}
@@ -4361,6 +4418,7 @@ export class AgentDaemon {
 					clientId: client.id,
 					senderKey: this.createCliAgentMessageSenderKey(),
 					origin: command.agentOrigin === true ? "agent" : "cli",
+					messageId: command.messageId,
 				});
 				return success(command.id, "send_message", receipt);
 			}
@@ -5896,6 +5954,7 @@ export class AgentDaemon {
 		clientId?: string;
 		senderKey?: string;
 		origin: "agent" | "cli";
+		messageId?: string;
 	}): Promise<AgentSessionMessageReceipt> {
 		if (this.agentMessagesPaused) {
 			throw new Error("Agent messaging is paused");
@@ -5937,7 +5996,12 @@ export class AgentDaemon {
 						} else if (this.options.worker && options.fromState) {
 							// The supervisor can resolve and wake a saved worker even when it is no longer
 							// present in this worker's resident peer snapshot.
-							return this.sendRemoteAgentSessionMessage(options.fromState, targetSelector, message);
+							return this.sendRemoteAgentSessionMessage(
+								options.fromState,
+								targetSelector,
+								message,
+								options.messageId,
+							);
 						} else {
 							throw error;
 						}
@@ -5959,7 +6023,7 @@ export class AgentDaemon {
 			throw new Error(`Agent messaging rate limit exceeded; retry after ${rateLimit.retryAfterMs}ms`);
 		}
 		const payload: AgentSessionMessagePayload = {
-			id: createAgentSessionMessageId(),
+			id: options.messageId ?? createAgentSessionMessageId(),
 			source: AGENT_MESSAGE_SOURCE,
 			message,
 			from:
@@ -5981,6 +6045,7 @@ export class AgentDaemon {
 		fromState: ActiveSessionState,
 		targetSelector: string,
 		message: string,
+		messageId?: string,
 	): Promise<AgentSessionMessageReceipt> {
 		const supervisorSocketPath = this.supervisorSocketPathFromEnv();
 		if (!supervisorSocketPath) {
@@ -6013,6 +6078,7 @@ export class AgentDaemon {
 					message,
 					fromActiveSessionId: fromState.activeSessionId,
 					agentOrigin: true,
+					messageId,
 				},
 				30_000,
 			);
@@ -6032,37 +6098,56 @@ export class AgentDaemon {
 		targetState: ActiveSessionState,
 		payload: AgentSessionMessagePayload,
 	): Promise<{ status: AgentSessionMessageDeliveryStatus }> {
+		if (this.recentAgentMessages.has(payload.id)) {
+			const cached = this.recentAgentMessages.get(payload.id)!;
+			if (cached === "uncertain") {
+				throw new Error("Command result uncertain (inflight)");
+			}
+			return { status: cached };
+		}
+		this.recentAgentMessages.set(payload.id, "uncertain");
+		if (this.recentAgentMessages.size > 1024) {
+			const firstKey = this.recentAgentMessages.keys().next().value;
+			if (firstKey) this.recentAgentMessages.delete(firstKey);
+		}
 		const message = createAgentSessionMessage(payload);
 		let preflightFailed = false;
 		let preflightQueued = false;
-		await targetState.runtime.session.acceptAgentMessagePrompt(message.content, {
-			expandPromptTemplates: false,
-			streamingBehavior: "steer",
-			queueIfBusy: true,
-			customMessage: message,
-			admissionCommitted: () => {
-				if (this.agentMessagesPaused) {
-					throw new Error("Agent messaging is paused");
-				}
-				if (
-					!this.sessions.has(targetState.activeSessionId) ||
-					this.closingSessions.has(targetState.activeSessionId)
-				) {
-					throw new Error("Target session is closing before agent message delivery");
-				}
-				if (targetState.runtime.session.sessionId !== payload.target.sessionId) {
-					throw new Error("Target session changed before agent message delivery");
-				}
-			},
-			preflightResult: (didSucceed, didQueue) => {
-				preflightFailed = !didSucceed;
-				preflightQueued = didSucceed && didQueue === true;
-			},
-		});
-		if (preflightFailed) {
-			throw new Error("Agent message was not accepted");
+		try {
+			await targetState.runtime.session.acceptAgentMessagePrompt(message.content, {
+				expandPromptTemplates: false,
+				streamingBehavior: "steer",
+				queueIfBusy: true,
+				customMessage: message,
+				admissionCommitted: () => {
+					if (this.agentMessagesPaused) {
+						throw new Error("Agent messaging is paused");
+					}
+					if (
+						!this.sessions.has(targetState.activeSessionId) ||
+						this.closingSessions.has(targetState.activeSessionId)
+					) {
+						throw new Error("Target session is closing before agent message delivery");
+					}
+					if (targetState.runtime.session.sessionId !== payload.target.sessionId) {
+						throw new Error("Target session changed before agent message delivery");
+					}
+				},
+				preflightResult: (didSucceed, didQueue) => {
+					preflightFailed = !didSucceed;
+					preflightQueued = didSucceed && didQueue === true;
+				},
+			});
+			if (preflightFailed) {
+				throw new Error("Agent message was not accepted");
+			}
+			const status = preflightQueued ? "queued" : "delivered";
+			this.recentAgentMessages.set(payload.id, status);
+			return { status };
+		} catch (error) {
+			this.recentAgentMessages.delete(payload.id);
+			throw error;
 		}
-		return { status: preflightQueued ? "queued" : "delivered" };
 	}
 
 	private detachClientFromSession(client: DaemonSocketClient, state: ActiveSessionState): void {

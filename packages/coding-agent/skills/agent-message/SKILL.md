@@ -31,7 +31,7 @@ if child is not None:
   for the current agent's parent, siblings, and children. It includes inactive
   family members and sorts parent, siblings by name, then children by name; it
   does not expose a global daemon session list.
-- `await agent_message.send(message, receiver_role="parent" | "sibling" | "child", receiver_name=None)` — sends one direct
+- `await agent_message.send(message, receiver_role="parent" | "sibling" | "child", receiver_name=None, message_id=None)` — sends one direct
   text message to an active session. Sending to an idle completed subagent
   starts an ordinary follow-up turn in that same child session and context.
   The child remains available only until its parent session closes. The daemon

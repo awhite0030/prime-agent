@@ -522,6 +522,7 @@ export type DaemonCommand =
 			/** Internal worker-origin marker; public clients remain unrestricted. */
 			agentOrigin?: boolean;
 			deliveryMode?: AgentSessionMessageDeliveryMode;
+			messageId?: string;
 	  }
 	| { id?: string; type: "agent_messages_status"; activeSessionId?: string }
 	| { id?: string; type: "agent_messages_pause"; activeSessionId?: string }

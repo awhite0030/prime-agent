@@ -3249,6 +3249,7 @@ export class AgentSession {
 				return this._agentMessageController.sendAgentMessage({
 					target: assertDirectAgentMessageTarget(payload.target),
 					message: normalizeAgentSessionMessage(payload.message),
+					messageId: typeof payload.message_id === "string" ? payload.message_id.trim() : undefined,
 				});
 			}
 			default:
@@ -9754,7 +9755,18 @@ export class AgentSession {
 				(candidate.id === selector || candidate.sessionName === selector),
 		);
 		if (!run) return undefined;
-		await run.publication.promise;
+		let timer: NodeJS.Timeout | undefined;
+		const timeoutPromise = new Promise<boolean>((resolve) => {
+			timer = setTimeout(() => resolve(false), 60_000);
+		});
+		const didComplete = await Promise.race([
+			run.publication.promise.then(() => true).catch(() => true),
+			timeoutPromise,
+		]);
+		if (timer) clearTimeout(timer);
+		if (!didComplete) {
+			throw new Error(`Timed out waiting for child publication: ${selector}`);
+		}
 		return run.session?.sessionId;
 	}
 
