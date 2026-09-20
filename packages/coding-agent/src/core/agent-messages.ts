@@ -153,6 +153,7 @@ export interface AgentSessionMessageSendInput {
 	target: string;
 	message: string;
 	receiverRole?: AgentFamilyRelationship;
+	messageId?: string;
 }
 
 export interface AgentSessionMessageController {
@@ -611,6 +612,7 @@ export function createAgentMessageHostHandlers(
 				target,
 				message: payload.message,
 				receiverRole: payload.receiver_role as AgentFamilyRelationship,
+				messageId: typeof payload.message_id === "string" ? payload.message_id.trim() : undefined,
 			})) as unknown as Record<string, unknown>;
 		},
 	};
