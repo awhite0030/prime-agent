@@ -1,0 +1,2 @@
+- Fixed unbounded waits on the agent-message delivery path by bounding timeouts to 60s with actionable errors.
+- Fixed duplicate execution on model retries by deduplicating delivery attempts with sender-minted \`message_id\` parameters via the daemon.

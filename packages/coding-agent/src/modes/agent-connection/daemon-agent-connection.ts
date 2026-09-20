@@ -865,12 +865,17 @@ export class DaemonAgentConnection implements AgentConnection {
 		return data.heartbeat ?? undefined;
 	}
 
-	async sendAgentMessage(targetActiveSessionId: string, message: string): Promise<AgentSessionMessageReceipt> {
+	async sendAgentMessage(
+		targetActiveSessionId: string,
+		message: string,
+		messageId?: string,
+	): Promise<AgentSessionMessageReceipt> {
 		return this.requestData<AgentSessionMessageReceipt>({
 			type: "send_message",
 			targetActiveSessionId,
 			message,
 			fromActiveSessionId: this.activeSessionId,
+			messageId,
 		});
 	}
 

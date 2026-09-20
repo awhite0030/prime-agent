@@ -25,6 +25,7 @@ async def send(
     *,
     receiver_role: ReceiverRole | str | None = None,
     receiver_name: str | None = None,
+    message_id: str | None = None,
 ) -> dict[str, Any]:
     """Send one direct role-addressed message or broadcast to ``"all"``."""
     roles = ("parent", "sibling", "child")
@@ -40,6 +41,8 @@ async def send(
             "target": "all",
             "message": broadcast_message,
         }
+        if message_id is not None:
+            payload["message_id"] = message_id
     else:
         if receiver_role not in roles:
             raise ValueError('receiver_role must be "parent", "sibling", or "child"')
@@ -55,6 +58,8 @@ async def send(
             "receiver_role": receiver_role,
             "receiver_name": receiver_name,
         }
+        if message_id is not None:
+            payload["message_id"] = message_id
     receipt = await host_request("agent_message.send", payload)
     receipts = receipt.get("receipts") if isinstance(receipt, dict) else None
     if isinstance(receipts, list):
