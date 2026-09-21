@@ -41,7 +41,7 @@ import type {
 	ToolResultMessage,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
-import { parseStreamingJson } from "../utils/json-parse.js";
+import { StreamingJsonParser } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { recordStreamFailure, streamFailureFromStopReason } from "../utils/stream-failure.js";
 import { adjustMaxTokensForThinking, buildBaseOptions, clampReasoning } from "./simple-options.js";
@@ -402,7 +402,8 @@ function handleContentBlockDelta(
 		}
 	} else if (delta?.toolUse && block?.type === "toolCall") {
 		block.partialJson = (block.partialJson || "") + (delta.toolUse.input || "");
-		block.arguments = parseStreamingJson(block.partialJson);
+		(block as any)._parser ??= new StreamingJsonParser();
+		block.arguments = (block as any)._parser.parse(block.partialJson);
 		stream.push({ type: "toolcall_delta", contentIndex: index, delta: delta.toolUse.input || "", partial: output });
 	} else if (delta?.reasoningContent) {
 		let thinkingBlock = block;
@@ -468,7 +469,8 @@ function handleContentBlockStop(
 			stream.push({ type: "thinking_end", contentIndex: index, content: block.thinking, partial: output });
 			break;
 		case "toolCall":
-			block.arguments = parseStreamingJson(block.partialJson);
+			(block as any)._parser ??= new StreamingJsonParser();
+			block.arguments = (block as any)._parser.flush(block.partialJson);
 			// Finalize in-place and strip the scratch buffer so replay only
 			// carries parsed arguments.
 			delete (block as Block).partialJson;

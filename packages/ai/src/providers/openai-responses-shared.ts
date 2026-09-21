@@ -29,7 +29,7 @@ import type {
 } from "../types.js";
 import type { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { shortHash } from "../utils/hash.js";
-import { parseStreamingJson } from "../utils/json-parse.js";
+import { parseStreamingJson, StreamingJsonParser } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { classifyStreamFailure, StreamFailureError } from "../utils/stream-failure.js";
 import { transformMessages } from "./transform-messages.js";
@@ -395,7 +395,8 @@ export async function processResponsesStream<TApi extends Api>(
 		} else if (event.type === "response.function_call_arguments.delta") {
 			if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
 				currentBlock.partialJson += event.delta;
-				currentBlock.arguments = parseStreamingJson(currentBlock.partialJson);
+				(currentBlock as any)._parser ??= new StreamingJsonParser();
+				currentBlock.arguments = (currentBlock as any)._parser.parse(currentBlock.partialJson);
 				stream.push({
 					type: "toolcall_delta",
 					contentIndex: blockIndex(),
@@ -407,7 +408,8 @@ export async function processResponsesStream<TApi extends Api>(
 			if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
 				const previousPartialJson = currentBlock.partialJson;
 				currentBlock.partialJson = event.arguments;
-				currentBlock.arguments = parseStreamingJson(currentBlock.partialJson);
+				(currentBlock as any)._parser ??= new StreamingJsonParser();
+				currentBlock.arguments = (currentBlock as any)._parser.parse(currentBlock.partialJson);
 
 				if (event.arguments.startsWith(previousPartialJson)) {
 					const delta = event.arguments.slice(previousPartialJson.length);
