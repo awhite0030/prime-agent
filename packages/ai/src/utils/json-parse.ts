@@ -101,6 +101,32 @@ export function parseJsonWithRepair<T>(json: string): T {
  * @param partialJson The partial JSON string from streaming
  * @returns Parsed object or empty object if parsing fails
  */
+export class StreamingJsonParser<T = Record<string, unknown>> {
+	private lastParsedString?: string;
+	private lastParsedObject: T = {} as T;
+	private lastParseTime = 0;
+
+	parse(partialJson: string | undefined): T {
+		if (!partialJson || partialJson.trim() === "") return {} as T;
+		if (partialJson === this.lastParsedString) return this.lastParsedObject;
+
+		const now = Date.now();
+		if (now - this.lastParseTime < 100) return this.lastParsedObject;
+
+		this.lastParsedString = partialJson;
+		this.lastParsedObject = parseStreamingJson<T>(partialJson);
+		this.lastParseTime = now;
+		return this.lastParsedObject;
+	}
+
+	flush(partialJson: string | undefined): T {
+		this.lastParsedString = partialJson;
+		this.lastParsedObject = parseStreamingJson<T>(partialJson);
+		this.lastParseTime = Date.now();
+		return this.lastParsedObject;
+	}
+}
+
 export function parseStreamingJson<T = Record<string, unknown>>(partialJson: string | undefined): T {
 	if (!partialJson || partialJson.trim() === "") {
 		return {} as T;

@@ -33,7 +33,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
-import { parseStreamingJson } from "../utils/json-parse.js";
+import { StreamingJsonParser } from "../utils/json-parse.js";
 import { describeRepetition, isRepetitionGuardDisabled, RepetitionGuard } from "../utils/repetition-guard.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { recordStreamFailure, StreamFailureError } from "../utils/stream-failure.js";
@@ -231,11 +231,16 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 						partial: output,
 					});
 				} else if (block.type === "toolCall") {
-					block.arguments = parseStreamingJson(block.partialArgs);
+					(block as any)._parser ??= new StreamingJsonParser();
+					block.arguments = (block as any)._parser.flush(block.partialArgs);
 					// Finalize in-place and strip the scratch buffers so replay only
 					// carries parsed arguments.
 					delete block.partialArgs;
 					delete block.streamIndex;
+					if ((block as any)._rawDetailRecord) {
+						block.thoughtSignature = JSON.stringify((block as any)._rawDetailRecord);
+						delete (block as any)._rawDetailRecord;
+					}
 					stream.push({
 						type: "toolcall_end",
 						contentIndex,
@@ -402,7 +407,8 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 							if (toolCall.function?.arguments) {
 								delta = toolCall.function.arguments;
 								block.partialArgs = (block.partialArgs ?? "") + toolCall.function.arguments;
-								block.arguments = parseStreamingJson(block.partialArgs);
+								(block as any)._parser ??= new StreamingJsonParser();
+								block.arguments = (block as any)._parser.parse(block.partialArgs);
 							}
 							stream.push({
 								type: "toolcall_delta",
@@ -440,7 +446,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 									(b) => b.type === "toolCall" && b.id === detailRecord.id,
 								) as ToolCall | undefined;
 								if (matchingToolCall) {
-									matchingToolCall.thoughtSignature = JSON.stringify(detailRecord);
+									(matchingToolCall as any)._rawDetailRecord = detailRecord;
 								}
 							}
 						}

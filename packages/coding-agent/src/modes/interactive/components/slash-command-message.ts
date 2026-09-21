@@ -19,6 +19,7 @@ export function styleSlashCommandText(text: string, styleRest: (rest: string) =>
 
 /** Renders a durable session command with the same layout as a user message. */
 export class SlashCommandMessageComponent extends Container {
+	private decorationCache = new WeakMap<string[], string[]>();
 	private readonly contentBox: Box;
 
 	constructor(text: string) {
@@ -33,8 +34,13 @@ export class SlashCommandMessageComponent extends Container {
 	override render(width: number): string[] {
 		const lines = super.render(width);
 		if (lines.length === 0) return lines;
-		lines[0] = OSC133_ZONE_START + lines[0];
-		lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
-		return lines;
+		let decorated = this.decorationCache.get(lines);
+		if (!decorated) {
+			decorated = [...lines];
+			decorated[0] = OSC133_ZONE_START + decorated[0];
+			decorated[decorated.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + decorated[decorated.length - 1];
+			this.decorationCache.set(lines, decorated);
+		}
+		return decorated;
 	}
 }
