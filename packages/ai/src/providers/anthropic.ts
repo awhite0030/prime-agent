@@ -30,7 +30,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
-import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.js";
+import { parseJsonWithRepair, StreamingJsonParser } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import {
 	classifyStreamFailure,
@@ -654,7 +654,8 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 						const block = blocks[index];
 						if (block && block.type === "toolCall") {
 							block.partialJson += event.delta.partial_json;
-							block.arguments = parseStreamingJson(block.partialJson);
+							(block as any)._parser ??= new StreamingJsonParser();
+							block.arguments = (block as any)._parser.parse(block.partialJson);
 							stream.push({
 								type: "toolcall_delta",
 								contentIndex: index,
@@ -690,7 +691,8 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 								partial: output,
 							});
 						} else if (block.type === "toolCall") {
-							block.arguments = parseStreamingJson(block.partialJson);
+							(block as any)._parser ??= new StreamingJsonParser();
+							block.arguments = (block as any)._parser.parse(block.partialJson);
 							// Finalize in-place and strip the scratch buffer so replay only
 							// carries parsed arguments.
 							delete (block as { partialJson?: string }).partialJson;
