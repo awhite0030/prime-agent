@@ -770,6 +770,38 @@ def _taskkill_tree(pid: int) -> bool:
         return False
 
 
+def _darwin_start_id(pid: int) -> str | None:
+    """Start time from sysctl(2), rendered exactly like the host's pinned ``ps -o lstart=``.
+
+    ``/bin/ps`` carries restricted entitlements and cannot be executed from inside a
+    seatbelt profile (``execve`` fails with EPERM even under ``(allow default)``), so a
+    kernel confined with ``sandbox-exec`` could never enrol a child and every ``bash()``
+    failed closed. ``sysctl`` is a libc call and is permitted there. The string is kept in
+    ``ps:`` form so ``getPsProcessStartId`` in ``session-lease.ts`` — which still runs
+    ``ps`` with ``TZ=UTC`` and the C locale — compares equal to it.
+    """
+    try:
+        import ctypes
+        import ctypes.util
+
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        mib = (ctypes.c_int * 4)(1, 14, 1, pid)  # CTL_KERN, KERN_PROC, KERN_PROC_PID
+        size = ctypes.c_size_t(0)
+        if libc.sysctl(mib, 4, None, ctypes.byref(size), None, 0) != 0 or size.value < 12:
+            return None
+        buf = ctypes.create_string_buffer(size.value)
+        if libc.sysctl(mib, 4, buf, ctypes.byref(size), None, 0) != 0 or size.value < 12:
+            return None
+        # struct kinfo_proc starts with struct extern_proc, whose first member is the
+        # p_un union carrying p_starttime (struct timeval: int64 tv_sec, int32 tv_usec).
+        sec, _usec = struct.unpack_from("qi", buf.raw, 0)
+        if sec <= 0:
+            return None
+        return "ps:" + time.strftime("%a %b %e %H:%M:%S %Y", time.gmtime(sec))
+    except Exception:
+        return None
+
+
 def _process_start_id(pid: int) -> str | None:
     if os.name == "nt":
         # Mirrors getWindowsProcessStartId in session-lease.ts byte-for-byte so
@@ -792,6 +824,10 @@ def _process_start_id(pid: int) -> str | None:
             return f"win:{out}" if out.isdigit() else None
         except (OSError, subprocess.SubprocessError):
             return None
+    if sys.platform == "darwin":
+        sysctl_id = _darwin_start_id(pid)
+        if sysctl_id is not None:
+            return sysctl_id
     try:
         with open(f"/proc/{pid}/stat", "r") as f:
             stat = f.read()
@@ -804,8 +840,15 @@ def _process_start_id(pid: int) -> str | None:
         # macOS has no /proc; /bin/ps is always present there, so use the
         # absolute path (bare `ps` stays only as the exotic-POSIX last resort).
         ps = "/bin/ps" if sys.platform == "darwin" else "ps"
+
+        env = dict(os.environ)
+        env["LC_ALL"] = "C"
+        env["LC_TIME"] = "C"
+        env["LANG"] = "C"
+        env["TZ"] = "UTC"
+
         out = subprocess.run(
-            [ps, "-p", str(pid), "-o", "lstart="], capture_output=True, text=True, timeout=5
+            [ps, "-p", str(pid), "-o", "lstart="], capture_output=True, text=True, timeout=5, env=env
         ).stdout.strip()
         return f"ps:{out}" if out else None
     except (OSError, subprocess.SubprocessError):
