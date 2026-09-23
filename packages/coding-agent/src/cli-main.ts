@@ -35,7 +35,11 @@ export async function runCli(): Promise<void> {
 
 		// undici's 300s body/headers timeouts abort long local-LLM SSE stalls; provider
 		// SDKs enforce their own deadlines via retry.provider.timeoutMs.
-		setGlobalDispatcher(new EnvHttpProxyAgent({ bodyTimeout: 0, headersTimeout: 0 }));
+		const bodyTimeout =
+			process.env.PI_UNDICI_BODY_TIMEOUT !== undefined ? Number(process.env.PI_UNDICI_BODY_TIMEOUT) : 600_000;
+		const headersTimeout =
+			process.env.PI_UNDICI_HEADERS_TIMEOUT !== undefined ? Number(process.env.PI_UNDICI_HEADERS_TIMEOUT) : 60_000;
+		setGlobalDispatcher(new EnvHttpProxyAgent({ bodyTimeout, headersTimeout }));
 
 		try {
 			await main(process.argv.slice(2));
