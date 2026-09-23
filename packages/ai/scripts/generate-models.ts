@@ -1983,45 +1983,7 @@ async function generateModels() {
 		});
 	}
 
-	const deepseekV4Models: Model<"openai-completions">[] = [
-		{
-			id: "deepseek-v4-flash",
-			name: "DeepSeek V4 Flash",
-			api: "openai-completions",
-			baseUrl: "https://api.deepseek.com",
-			provider: "deepseek",
-			reasoning: true,
-			input: ["text"],
-			cost: {
-				input: 0.14,
-				output: 0.28,
-				cacheRead: 0.0028,
-				cacheWrite: 0,
-			},
-			contextWindow: 1000000,
-			maxTokens: 384000,
-			compat: DEEPSEEK_V4_COMPAT,
-		},
-		{
-			id: "deepseek-v4-pro",
-			name: "DeepSeek V4 Pro",
-			api: "openai-completions",
-			baseUrl: "https://api.deepseek.com",
-			provider: "deepseek",
-			reasoning: true,
-			input: ["text"],
-			cost: {
-				input: 0.435,
-				output: 0.87,
-				cacheRead: 0.003625,
-				cacheWrite: 0,
-			},
-			contextWindow: 1000000,
-			maxTokens: 384000,
-			compat: DEEPSEEK_V4_COMPAT,
-		},
-	];
-	allModels.push(...deepseekV4Models);
+
 
 	for (const candidate of allModels) {
 		if (candidate.api === "openai-completions" && candidate.id.includes("deepseek-v4")) {
