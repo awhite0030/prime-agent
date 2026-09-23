@@ -1,0 +1,1 @@
+- Fixed an issue where the global HTTP dispatcher had timeouts disabled, causing requests to non-responsive providers to hang indefinitely. Timeouts are now configurable via `PI_UNDICI_BODY_TIMEOUT` and `PI_UNDICI_HEADERS_TIMEOUT`.
