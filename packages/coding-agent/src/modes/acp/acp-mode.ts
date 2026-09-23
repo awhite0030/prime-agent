@@ -841,7 +841,7 @@ export async function runAcpModeWithConnection(
 			const entry = session?.id === params.sessionId ? session : undefined;
 			if (!entry) throw new Error(`Unknown ACP session: ${params.sessionId}`);
 			if (sessionCloseInFlight) throw new Error(`ACP session is closing: ${params.sessionId}`);
-			if (entry.cancelling) throw new Error(`ACP session is cancelling: ${params.sessionId}`);
+			while (entry.cancelling) await entry.cancelTask;
 			await entry.inputPauseRelease?.promise;
 			// A prompt response precedes its correlated terminal update. Serialize the
 			// next turn behind that lifecycle so it cannot overwrite terminal ownership.
