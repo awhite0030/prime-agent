@@ -227,11 +227,21 @@ async function registerClient(registrationEndpoint: string, label: string): Prom
 		response_types: ["code"],
 		token_endpoint_auth_method: "none",
 	};
-	const data = (await fetchJson(registrationEndpoint, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	})) as { client_id?: unknown };
+	let data: { client_id?: unknown };
+	try {
+		data = (await fetchJson(registrationEndpoint, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		})) as { client_id?: unknown };
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("failed: 403")) {
+			throw new Error(
+				`POST ${registrationEndpoint} failed: 403 (Dynamic client registration was forbidden. The provider may restrict remote MCP access to pre-approved applications.)`,
+			);
+		}
+		throw error;
+	}
 	if (typeof data.client_id !== "string" || !data.client_id) {
 		throw new Error(`Dynamic client registration at ${registrationEndpoint} returned no client_id`);
 	}
