@@ -134,6 +134,12 @@ function normalizeModelSearchText(value: string): string {
 
 export function findRlmModelMatches(query: string, models: Model<Api>[], limit: number): RlmModelMatch[] {
 	const normalizedQuery = normalizeModelSearchText(query.trim());
+	const queryTokens = query
+		.trim()
+		.split(/[^a-zA-Z0-9]+/)
+		.filter(Boolean)
+		.map((t) => t.toLowerCase());
+
 	return models
 		.map((model) => {
 			const selector = `${model.provider}/${model.id}`;
@@ -147,6 +153,13 @@ export function findRlmModelMatches(query: string, models: Model<Api>[], limit: 
 				if (exactIndex >= 0) score = exactIndex;
 				else if (prefixIndex >= 0) score = 3 + prefixIndex;
 				else if (partialIndex >= 0) score = 6 + partialIndex;
+
+				if (score === Number.POSITIVE_INFINITY && queryTokens.length > 0) {
+					const concatenatedFields = normalizedFields.join("");
+					if (queryTokens.every((token) => concatenatedFields.includes(token))) {
+						score = 9;
+					}
+				}
 			}
 			return { model, selector, score };
 		})

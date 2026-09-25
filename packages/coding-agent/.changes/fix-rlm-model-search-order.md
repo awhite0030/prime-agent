@@ -1,0 +1,1 @@
+- Fixed order-sensitive token matching in RLM model search so that models are correctly matched when querying with valid terms in any sequence.
