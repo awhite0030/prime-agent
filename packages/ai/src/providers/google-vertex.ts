@@ -505,11 +505,8 @@ function getDisabledThinkingConfig(model: Model<"google-vertex">): ThinkingConfi
 	// do not support full thinking-off either. For Gemini 3 models, use the lowest supported
 	// thinkingLevel without includeThoughts so hidden thinking remains invisible to pi.
 	const geminiModel = model as unknown as Model<"google-generative-ai">;
-	if (isGemini3ProModel(geminiModel)) {
+	if (isGemini3ProModel(geminiModel) || isGemini3FlashModel(geminiModel)) {
 		return { thinkingLevel: ThinkingLevel.LOW };
-	}
-	if (isGemini3FlashModel(geminiModel)) {
-		return { thinkingLevel: ThinkingLevel.MINIMAL };
 	}
 
 	// Gemini 2.x supports disabling via thinkingBudget = 0.
@@ -520,7 +517,7 @@ function getGemini3ThinkingLevel(
 	effort: ClampedThinkingLevel,
 	model: Model<"google-generative-ai">,
 ): GoogleThinkingLevel {
-	if (isGemini3ProModel(model)) {
+	if (isGemini3ProModel(model) || isGemini3FlashModel(model)) {
 		switch (effort) {
 			case "minimal":
 			case "low":
