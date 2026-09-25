@@ -418,11 +418,8 @@ function getDisabledThinkingConfig(model: Model<"google-generative-ai">): Thinki
 	// Google docs: Gemini 3.1 Pro cannot disable thinking, and Gemini 3 Flash / Flash-Lite
 	// do not support full thinking-off either. For Gemini 3 models, use the lowest supported
 	// thinkingLevel without includeThoughts so hidden thinking remains invisible to pi.
-	if (isGemini3ProModel(model)) {
+	if (isGemini3ProModel(model) || isGemini3FlashModel(model)) {
 		return { thinkingLevel: "LOW" as any };
-	}
-	if (isGemini3FlashModel(model)) {
-		return { thinkingLevel: "MINIMAL" as any };
 	}
 	if (isGemma4Model(model)) {
 		return { thinkingLevel: "MINIMAL" as any };
@@ -433,7 +430,7 @@ function getDisabledThinkingConfig(model: Model<"google-generative-ai">): Thinki
 }
 
 function getThinkingLevel(effort: ClampedThinkingLevel, model: Model<"google-generative-ai">): GoogleThinkingLevel {
-	if (isGemini3ProModel(model)) {
+	if (isGemini3ProModel(model) || isGemini3FlashModel(model)) {
 		switch (effort) {
 			case "minimal":
 			case "low":
