@@ -444,4 +444,21 @@ describe.sequential("MCP OAuth provider", () => {
 			}),
 		).rejects.toThrow("dynamic client registration");
 	});
+
+	it("explains 403 Forbidden errors during dynamic client registration", async () => {
+		const fetchMock = vi.fn(async (input: unknown): Promise<Response> => {
+			const missing = absentPrm(input);
+			if (missing) return missing;
+			const url = urlOf(input);
+			if (url === "https://srv.test/.well-known/oauth-authorization-server") return jsonResponse(ORIGIN_META);
+			if (url === ORIGIN_META.registration_endpoint) return new Response("Forbidden", { status: 403 });
+			throw new Error(`unexpected fetch: ${url}`);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const provider = createMcpOAuthProvider({ server: "figma", label: "Figma", url: ORIGIN_URL });
+		await expect(loginWithManualCode(provider)).rejects.toThrow(
+			"POST https://srv.test/register failed: 403 (Dynamic client registration was forbidden. The provider may restrict remote MCP access to pre-approved applications.)",
+		);
+	});
 });
