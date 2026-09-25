@@ -13,11 +13,15 @@ it. Call it directly from the Python REPL:
 ```python
 await goal.get()
 await goal.create("ship the release notes", token_budget=200000)
+await goal.pause()
+await goal.clear()
 await goal.complete()
 ```
 
 ## API
 
+- `await goal.pause()` — pause the current goal. Returns the goal dict. Use to pause the goal when blocked on user input.
+- `await goal.clear()` — clear the current goal. Returns the goal dict.
 - `await goal.get()` — current goal as a dict: `goal` (or `None` when no goal
   is set), `remaining_tokens`, and `completion_budget_report`. The `goal` dict
   carries `objective`, `status`, `token_budget`, `tokens_used`,

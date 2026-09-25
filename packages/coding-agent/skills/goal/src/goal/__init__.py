@@ -22,6 +22,24 @@ async def get() -> dict[str, Any]:
     return await host_request("goal.get")
 
 
+async def pause() -> dict[str, Any]:
+    """Pause the active thread goal.
+
+    Returns a dict with `goal` (None when no goal is set), `remaining_tokens`,
+    and `completion_budget_report`.
+    """
+    return await host_request("goal.pause")
+
+
+async def clear() -> dict[str, Any]:
+    """Clear the active thread goal.
+
+    Returns a dict with `goal` (None when no goal is set), `remaining_tokens`,
+    and `completion_budget_report`.
+    """
+    return await host_request("goal.clear")
+
+
 async def create(objective: str, token_budget: int | None = None) -> dict[str, Any]:
     """Start a new active thread goal.
 
