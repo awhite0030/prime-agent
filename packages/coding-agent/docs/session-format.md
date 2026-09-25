@@ -14,7 +14,7 @@ The header records the working directory. Current releases keep sessions in a fl
 
 Sessions can be removed by deleting their `.jsonl` files under `~/.prime/agent/sessions/`.
 
-Prime Agent also supports deleting sessions interactively from `/resume` (select a session and press `Ctrl+D`, then confirm). When available, Prime Agent uses the `trash` CLI to avoid permanent deletion.
+Prime Agent also supports deleting sessions interactively from `/resume` (select a session and press `Ctrl+X`, then confirm). When available, Prime Agent uses the `trash` CLI to avoid permanent deletion.
 
 ## Session Version
 

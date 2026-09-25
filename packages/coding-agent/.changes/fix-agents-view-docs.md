@@ -1,0 +1,1 @@
+- Fixed documentation stating `/resume` session deletion keybinding is `Ctrl+D` when it is actually `Ctrl+X`.
