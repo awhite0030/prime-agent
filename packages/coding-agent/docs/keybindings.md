@@ -109,6 +109,20 @@ Modifier combinations: `ctrl+shift+x`, `alt+ctrl+x`, `ctrl+shift+alt+x`, `ctrl+1
 | `app.session.fork` | *(none)* | Fork current session (`/fork`) |
 | `app.session.resume` | *(none)* | Open session resume picker (`/resume`) |
 
+### Agents View
+
+Used in the agents view (opened via `/resume`).
+
+| Keybinding id | Default | Description |
+|--------|---------|-------------|
+| `app.agents.back` | `left` | Return to parent agent scope |
+| `app.agents.open` | `right` | Drill into selected agent |
+| `app.agents.reply` | `space` | Reply to selected agent |
+| `app.agents.new` | `ctrl+n` | Start a new session from the agents view |
+| `app.agents.delete` | `ctrl+x` | Stop or delete selected agent |
+| `app.agents.program` | `ctrl+o` | Show the program that spawned subagents |
+| `app.agents.rename` | `ctrl+r` | Rename selected agent session |
+
 ### Models and Thinking
 
 | Keybinding id | Default | Description |
