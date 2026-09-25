@@ -2995,6 +2995,12 @@ export class AgentSession {
 		switch (type) {
 			case "goal.get":
 				return goalHostResponse(this.goalState, false);
+			case "goal.pause":
+				this._pauseGoal("Paused by agent");
+				return goalHostResponse(this.goalState, false);
+			case "goal.clear":
+				this._clearGoal();
+				return goalHostResponse(this.goalState, false);
 			case "goal.create": {
 				if (typeof payload.objective !== "string") {
 					throw new Error("goal.create objective must be a string");
@@ -9359,7 +9365,7 @@ export class AgentSession {
 			}),
 		};
 		if (this._includeGoals) {
-			for (const type of ["goal.get", "goal.create", "goal.complete"]) {
+			for (const type of ["goal.get", "goal.create", "goal.complete", "goal.pause", "goal.clear"]) {
 				handlers[type] = async (payload) => this.handleGoalHostRequest(type, payload);
 			}
 		}
