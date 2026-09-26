@@ -4,7 +4,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import { IMAGE_MIME_TYPES } from "../../utils/mime.js";
-import { resolveKernelBashShell } from "../../utils/shell.js";
+import { getShellEnv, resolveKernelBashShell } from "../../utils/shell.js";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.js";
 import { withKernelBootPermit } from "../kernel/boot-gate.js";
 import type { KernelBootstrapProgressHandler } from "../kernel/bootstrap.js";
@@ -469,6 +469,7 @@ export class IpythonKernelProvisioner {
 				cwd: this.cwd,
 				// bash() reads these to pick its shell and command prefix.
 				env: {
+					...getShellEnv(),
 					...this.options?.env,
 					...(shellPath ? { PRIME_AGENT_BASH_SHELL: shellPath } : {}),
 					...(commandPrefix ? { PRIME_AGENT_BASH_COMMAND_PREFIX: commandPrefix } : {}),
