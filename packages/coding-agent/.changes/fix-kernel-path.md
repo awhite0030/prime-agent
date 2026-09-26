@@ -1,0 +1,1 @@
+- **fix(coding-agent):** inject `~/.prime/agent/bin` into the Python kernel PATH, allowing the model to use the bundled `rg` and `fd` tools instead of falling back to slow `grep -r` or `find` scans.
