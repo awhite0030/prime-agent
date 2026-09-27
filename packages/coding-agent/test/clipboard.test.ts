@@ -57,6 +57,9 @@ beforeEach(() => {
 	vi.stubEnv("SSH_CONNECTION", "");
 	vi.stubEnv("SSH_CLIENT", "");
 	vi.stubEnv("MOSH_CONNECTION", "");
+	vi.stubEnv("TMUX", "");
+	vi.stubEnv("ZELLIJ", "");
+	vi.stubEnv("HERDR_ENV", "");
 	stdoutWrites = [];
 	nativeResolved = false;
 	mocks.clipboard.setText.mockReset();
@@ -98,6 +101,21 @@ describe("copyToClipboard", () => {
 
 	test("remote native success emits OSC 52 after native write", async () => {
 		vi.stubEnv("SSH_CONNECTION", "client server");
+		mocks.clipboard.setText.mockImplementation(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 1));
+			expect(osc52Writes()).toHaveLength(0);
+			nativeResolved = true;
+		});
+
+		await copyToClipboard("hello");
+
+		expect(nativeResolved).toBe(true);
+		expect(osc52Writes()).toHaveLength(1);
+		expect(mockedExecSync).not.toHaveBeenCalled();
+	});
+
+	test("multiplexer success emits OSC 52 after native write", async () => {
+		vi.stubEnv("TMUX", "1");
 		mocks.clipboard.setText.mockImplementation(async () => {
 			await new Promise((resolve) => setTimeout(resolve, 1));
 			expect(osc52Writes()).toHaveLength(0);
