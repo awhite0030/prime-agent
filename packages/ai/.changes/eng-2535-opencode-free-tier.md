@@ -1,0 +1,1 @@
+- Fixed an issue where the OpenCode Zen and OpenCode Go free tier models were failing with a FreeTierError because the session affinity headers were missing.
