@@ -70,7 +70,7 @@ export function buildChildAgentDoctrine(options: ChildAgentDoctrineOptions): str
 	];
 	if (hasAgentMessage && hasIpython) {
 		lines.push(
-			'When a task calls for an answer, reply explicitly with `await agent_message.send(message, receiver_role="parent")`. Not every message or task needs a reply; continue cleanup after sending and go idle normally.',
+			'When a task calls for an answer, reply explicitly with `await agent_message.send(message, receiver_role="parent")`. Not every message or task needs a reply.',
 		);
 	}
 	return lines.join("\n");
@@ -170,7 +170,7 @@ export function buildRlmPrompt(options: RlmPromptOptions): string {
 			parts.push("Inspect files a child wrote when you need to collect its work without an observation capability.");
 		}
 		parts.push(
-			"Spawn independent children in separate calls and end your turn instead of awaiting completion. Multiple replies may arrive over multiple turns. Delete a direct child explicitly with `await rlm.delete_subagent(child)` when it is no longer needed.",
+			"Spawn independent children in separate calls and end your turn instead of awaiting completion. Multiple replies may arrive over multiple turns. Delete a direct child explicitly with `await rlm.delete_subagent(child)` only when you intend to cancel its active work.",
 		);
 	}
 

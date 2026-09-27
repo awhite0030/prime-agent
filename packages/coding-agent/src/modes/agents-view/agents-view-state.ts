@@ -789,6 +789,20 @@ export function buildAgentsViewRows(
 		if (!parent || parent === row) {
 			// Saved catalogs stream progressively, so a child can arrive before its
 			// parent. Keep it reachable as a root until the parent record appears.
+			// Deleted active children may also be absent from the active view but
+			// should remain subagents to avoid being promoted to top-level.
+			if (
+				row.record?.saved?.parentSessionPath ||
+				row.record?.daemon?.parentSessionPath ||
+				row.record?.daemon?.parentSessionId ||
+				row.record?.daemon?.rlmParentNodeId ||
+				row.summary.parentSessionPath ||
+				row.summary.parentSessionId ||
+				row.summary.parentActiveSessionId ||
+				row.summary.rlmParentNodeId
+			) {
+				continue;
+			}
 			row.kind = "agent";
 			continue;
 		}

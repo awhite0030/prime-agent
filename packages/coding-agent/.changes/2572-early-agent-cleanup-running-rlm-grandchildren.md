@@ -1,0 +1,1 @@
+- **Coding Agent**: Fixed an issue where `rlm.delete_subagent` did not cancel the descendant tasks properly and displayed the deleted session incorrectly at depth 0.
