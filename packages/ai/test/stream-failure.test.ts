@@ -50,6 +50,7 @@ describe("classifyStreamFailure", () => {
 		["api_error", undefined, "server_error"],
 		[undefined, 503, "server_error"],
 		["something_else", undefined, "unknown"],
+		[undefined, 402, "auth"],
 	])("classifies %s / %s as %s", (type, status, expected) => {
 		expect(classifyStreamFailure(type, status)).toBe(expected);
 	});
