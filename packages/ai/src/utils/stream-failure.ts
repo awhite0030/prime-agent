@@ -73,7 +73,8 @@ export function classifyStreamFailure(providerErrorType?: string, status?: numbe
 	}
 	if (type.includes("overloaded") || status === 529) return "overloaded";
 	if (type.includes("rate_limit") || type.includes("throttl") || status === 429) return "rate_limit";
-	if (/authentication|permission|unauthorized/.test(type) || status === 401 || status === 403) return "auth";
+	if (/authentication|permission|unauthorized/.test(type) || status === 401 || status === 402 || status === 403)
+		return "auth";
 	if (type.includes("invalid_request") || type.includes("not_found_error") || status === 400 || status === 404) {
 		return "invalid_request";
 	}

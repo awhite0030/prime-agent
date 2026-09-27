@@ -11074,7 +11074,7 @@ export class AgentSession {
 		if (message.stopReason !== "error" || !message.errorMessage) return false;
 
 		const structuredStatus = this._getProviderStreamFailureAuthStatus(message);
-		if (structuredStatus === 401 || structuredStatus === 403) {
+		if (structuredStatus === 401 || structuredStatus === 402 || structuredStatus === 403) {
 			return true;
 		}
 
