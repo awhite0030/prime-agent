@@ -1230,7 +1230,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		zaiToolStream: false,
 		supportsStrictMode: !isMoonshot && !isCloudflareAiGateway && !isPrimeInference,
 		cacheControlFormat,
-		sendSessionAffinityHeaders: false,
+		sendSessionAffinityHeaders: provider === "opencode" || provider === "opencode-go",
 		supportsLongCacheRetention: !(isCloudflareWorkersAI || isCloudflareAiGateway),
 	};
 }
@@ -1239,7 +1239,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
  * Get resolved compatibility settings for a model.
  * Uses explicit model.compat if provided, otherwise auto-detects from provider/URL.
  */
-function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletionsCompat {
+export function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletionsCompat {
 	const detected = detectCompat(model);
 	if (!model.compat) return detected;
 
