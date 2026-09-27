@@ -67,7 +67,7 @@ describe("issue #702 codex model discovery client version", () => {
 		expect(clientVersion).toMatch(/^\d+\.\d+\.\d+$/);
 		const [major, minor] = (clientVersion ?? "0.0.0").split(".").map(Number);
 		// 0.153.x is the floor at which ChatGPT discovery lists GPT-6 Astra (discussion #2062).
-		expect((major ?? 0) > 0 || (minor ?? 0) >= 153).toBe(true);
+		expect((major ?? 0) > 0 || (minor ?? 0) >= 156).toBe(true);
 
 		expect(executable.some((model) => model.provider === "openai-codex")).toBe(true);
 	});
