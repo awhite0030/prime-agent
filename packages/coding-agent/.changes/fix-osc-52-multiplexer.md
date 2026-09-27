@@ -1,0 +1,1 @@
+- Emit OSC 52 when prime-agent runs inside a multiplexer (like tmux or Zellij) to ensure clipboard copies reach remote viewers.
