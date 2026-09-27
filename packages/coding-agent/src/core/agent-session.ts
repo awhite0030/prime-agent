@@ -10156,7 +10156,7 @@ export class AgentSession {
 				this._emitRlmSubagentRemoval(subagent);
 			}
 			const liveSession = run.session;
-			if (run.status === "error" && !liveSession && run.settled) {
+			if ((run.status === "error" || run.status === "cancelled") && !liveSession && run.settled) {
 				this._deletedRlmChildIds.add(childId);
 				this._removeRlmSubagentTracking(childId, run);
 				return { subagent };
