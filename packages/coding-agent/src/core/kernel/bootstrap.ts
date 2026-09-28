@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { constants, existsSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { access, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -8,6 +8,7 @@ import { stderr, stdin } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { getPackageDir } from "../../config.js";
 import type { PythonSkillRuntimeInfo } from "../skills.js";
 
@@ -391,12 +392,31 @@ function run(command: string, args: string[], options: { stdio?: "ignore" | "inh
 	});
 }
 
-async function pythonImports(python: string, moduleName: string): Promise<boolean> {
+const execFileAsync = promisify(execFile);
+
+async function findMissingImports(python: string, moduleNames: string[]): Promise<string[]> {
+	if (moduleNames.length === 0) return [];
+	const pythonScript = `
+import sys
+import importlib.util
+
+modules = sys.argv[1:]
+missing = []
+for m in modules:
+    try:
+        if importlib.util.find_spec(m) is None:
+            missing.append(m)
+    except Exception:
+        missing.append(m)
+print(",".join(missing))
+`;
 	try {
-		await run(python, ["-c", `import ${moduleName}`], { stdio: "ignore" });
-		return true;
+		const { stdout } = await execFileAsync(python, ["-c", pythonScript, ...moduleNames]);
+		const missing = stdout.trim();
+		return missing ? missing.split(",") : [];
 	} catch {
-		return false;
+		// If the script fails, assume all are missing
+		return moduleNames;
 	}
 }
 
@@ -410,26 +430,30 @@ async function hasPrimeAgentRuntime(python: string): Promise<boolean> {
 }
 
 async function missingRlmExtraImportLabels(python: string): Promise<string[]> {
-	const missing: string[] = [];
+	const moduleNames = DEFAULT_RLM_EXTRA_PACKAGES.map((pkg) => pkg.importName);
+	const missingModules = new Set(await findMissingImports(python, moduleNames));
+	const missingLabels: string[] = [];
 	for (const pkg of DEFAULT_RLM_EXTRA_PACKAGES) {
-		if (!(await pythonImports(python, pkg.importName))) {
-			missing.push(pkg.promptLabel);
+		if (missingModules.has(pkg.importName)) {
+			missingLabels.push(pkg.promptLabel);
 		}
 	}
-	return missing;
+	return missingLabels;
 }
 
 async function missingPythonSkillImportLabels(
 	python: string,
 	pythonSkills: readonly KernelPythonSkill[],
 ): Promise<string[]> {
-	const missing: string[] = [];
+	const moduleNames = pythonSkills.map((skill) => skill.importName);
+	const missingModules = new Set(await findMissingImports(python, moduleNames));
+	const missingLabels: string[] = [];
 	for (const skill of pythonSkills) {
-		if (!(await pythonImports(python, skill.importName))) {
-			missing.push(`${skill.name} (${skill.importName})`);
+		if (missingModules.has(skill.importName)) {
+			missingLabels.push(`${skill.name} (${skill.importName})`);
 		}
 	}
-	return missing;
+	return missingLabels;
 }
 
 function reportProgress(options: EnsureKernelPythonOptions, message: string): void {
