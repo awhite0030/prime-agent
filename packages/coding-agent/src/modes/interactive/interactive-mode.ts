@@ -5148,6 +5148,9 @@ export class InteractiveMode {
 				}
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
+			} catch (error) {
+				this.showError(error instanceof Error ? error.message : String(error));
+				return;
 			} finally {
 				if (this.isShuttingDown || this.agentsViewRequest) {
 					submissionOutcome = "lifecycle-cancelled";
