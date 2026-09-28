@@ -2997,6 +2997,25 @@ export class InteractiveMode {
 		this.updateTerminalTitle();
 		this.setGoalAnnouncementBaseline(this.getGoalState());
 		this.syncGoalTray(this.getGoalState());
+
+		let hasPendingRefine = false;
+		for (const message of this.getSessionContextFromConnectionSnapshot(snapshot).messages) {
+			if (message.role === "custom") {
+				if (isSessionSlashCommandMessage(message) && message.details.command.name === "refine") {
+					hasPendingRefine = true;
+				} else if (isSessionSlashCommandResultMessage(message) && message.details.command.name === "refine") {
+					hasPendingRefine = false;
+				}
+			}
+		}
+		if (hasPendingRefine) {
+			if (!this.refineLoader) {
+				this.startRefineLoader();
+			}
+		} else {
+			this.discardRefineLoader();
+		}
+
 		this.syncWorkingLoader();
 	}
 
