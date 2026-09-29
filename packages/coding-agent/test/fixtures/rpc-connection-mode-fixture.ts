@@ -57,6 +57,9 @@ const connection = {
 			resolveExtensionUi = undefined;
 		}
 	},
+	async getMessages() {
+		return [{ role: "assistant" as const, content: "A".repeat(1024 * 1024), timestamp: 1 }];
+	},
 	async getAvailableModels() {
 		await new Promise((resolve) => setTimeout(resolve, 25));
 		return [];

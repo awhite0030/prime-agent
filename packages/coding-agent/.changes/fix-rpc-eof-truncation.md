@@ -1,0 +1,1 @@
+- Fixed an issue where large RPC responses were truncated at shutdown by awaiting stdout flush before exit.

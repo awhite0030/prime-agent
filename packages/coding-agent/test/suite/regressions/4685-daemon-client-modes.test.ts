@@ -101,7 +101,7 @@ async function runCli(
 			child.kill("SIGKILL");
 			reject(new Error(`CLI timed out\n${stderr}`));
 		}, 20_000);
-		child.once("exit", (code, signal) => {
+		child.once("close", (code, signal) => {
 			clearTimeout(timeout);
 			resolveExit({ code, signal: signal as NodeJS.Signals | null });
 		});
@@ -131,7 +131,7 @@ async function runRpc(
 	child.stdin?.end(options.trailingNewline === false ? input : `${input}\n`);
 	const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveExit, reject) => {
 		const timeout = setTimeout(() => reject(new Error(`RPC fixture timed out\n${stderr}`)), 10_000);
-		child.once("exit", (code, signal) => {
+		child.once("close", (code, signal) => {
 			clearTimeout(timeout);
 			resolveExit({ code, signal: signal as NodeJS.Signals | null });
 		});
@@ -406,6 +406,18 @@ describe("ENG-4685 daemon-backed client modes", () => {
 		expect(result.stdout).toContain("rpc eof response");
 		expect(result.stdout).toContain('"type":"agent_end"');
 	}, 30_000);
+
+	it("drains complete large accepted RPC commands before EOF releases the connection", async () => {
+		const result = await runRpc([{ id: "large", type: "get_messages" }]);
+		expect(result.stderr).toBe("");
+		expect(result.stdout[0]).toMatchObject({
+			id: "large",
+			type: "response",
+			command: "get_messages",
+			success: true,
+			data: { messages: [{ role: "assistant", content: "A".repeat(1024 * 1024), timestamp: 1 }] },
+		});
+	});
 
 	it("drains an unterminated final RPC command before EOF", async () => {
 		const result = await runRpc([{ id: "models", type: "get_available_models" }], {
