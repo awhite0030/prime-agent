@@ -630,6 +630,9 @@ def _snapshot_state(
         if name.startswith("_") or name in _ALWAYS_SKIP:
             continue
         value = ns.get(name, missing)
+        if isinstance(value, (io.RawIOBase, io.BufferedIOBase, io.TextIOBase)):
+            skipped.append({"name": name, "reason": "file handle"})
+            continue
         if value is missing:
             # A background thread deleted the name after the key listing.
             skipped.append({"name": name, "reason": "deleted during snapshot"})
@@ -802,7 +805,15 @@ def _restore_state(
         if name in _RESTORE_SKIP:
             continue
         try:
-            staged[name] = dill.loads(blob)
+            value = dill.loads(blob)
+            if isinstance(value, (io.RawIOBase, io.BufferedIOBase, io.TextIOBase)):
+                failed.append({"name": name, "reason": "file handle rejected"})
+                try:
+                    value.close()
+                except Exception:
+                    pass
+                continue
+            staged[name] = value
         except Exception as err:  # noqa: BLE001 - revive every other name regardless
             failed.append({"name": name, "reason": f"{type(err).__name__}: {_safe_str(err)[:200]}"})
     result = {"restored": sorted(staged), "failed": failed}
