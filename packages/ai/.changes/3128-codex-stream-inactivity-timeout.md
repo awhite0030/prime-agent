@@ -1,0 +1,1 @@
+- Added an inactivity timeout for Codex stream connections to prevent indefinite hangs, resetting the deadline on response events and retrying automatically.
