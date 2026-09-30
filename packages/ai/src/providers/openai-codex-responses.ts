@@ -157,6 +157,8 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 			);
 			const bodyJson = JSON.stringify(body);
 			const transport = options?.transport || "auto";
+			const timeoutMs = options?.timeoutMs ?? 300_000;
+			const inactivity = new InactivityTimeout(timeoutMs);
 			const websocketDisabledForSession = transport !== "sse" && isWebSocketSseFallbackActive(options?.sessionId);
 			if (websocketDisabledForSession) {
 				recordWebSocketSseFallback(options?.sessionId);
@@ -168,18 +170,26 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 
 				while (true) {
 					try {
-						await processWebSocketStream(
-							resolveCodexWebSocketUrl(model.baseUrl),
-							body,
-							websocketHeaders,
-							output,
-							stream,
-							model,
-							() => {
-								websocketStarted = true;
-							},
-							options,
-						);
+						try {
+							await Promise.race([
+								processWebSocketStream(
+									resolveCodexWebSocketUrl(model.baseUrl),
+									body,
+									websocketHeaders,
+									output,
+									stream,
+									model,
+									() => {
+										websocketStarted = true;
+									},
+									options,
+									inactivity,
+								),
+								inactivity.start(),
+							]);
+						} finally {
+							inactivity.stop();
+						}
 
 						if (options?.signal?.aborted) {
 							throw new Error("Request was aborted");
@@ -240,34 +250,55 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 				}
 
 				try {
-					response = await fetch(resolveCodexUrl(model.baseUrl), {
-						method: "POST",
-						headers: sseHeaders,
-						body: bodyJson,
-						signal: options?.signal,
-					});
-					await options?.onResponse?.(
-						{ status: response.status, headers: headersToRecord(response.headers) },
-						model,
-					);
+					try {
+						await Promise.race([
+							(async () => {
+								response = await fetch(resolveCodexUrl(model.baseUrl), {
+									method: "POST",
+									headers: sseHeaders,
+									body: bodyJson,
+									signal: options?.signal,
+								});
+								await options?.onResponse?.(
+									{ status: response.status, headers: headersToRecord(response.headers) },
+									model,
+								);
 
-					if (response.ok) {
-						break;
+								if (response.ok) {
+									await processStream(response, output, stream, model, options, inactivity);
+								}
+							})(),
+							inactivity.start(),
+						]);
+					} finally {
+						inactivity.stop();
 					}
 
-					const errorText = await response.text();
-					if (attempt < MAX_RETRIES && isRetryableError(response.status, errorText)) {
-						const delayMs = BASE_DELAY_MS * 2 ** attempt;
-						await sleep(delayMs, options?.signal);
-						continue;
+					if (response?.ok) {
+						stream.push({
+							type: "done",
+							reason: output.stopReason as "stop" | "length" | "toolUse",
+							message: output,
+						});
+						stream.end();
+						return;
 					}
 
-					const fakeResponse = new Response(errorText, {
-						status: response.status,
-						statusText: response.statusText,
-					});
-					const info = await parseErrorResponse(fakeResponse);
-					throw new Error(info.friendlyMessage || info.message);
+					if (response) {
+						const errorText = await response.text();
+						if (attempt < MAX_RETRIES && isRetryableError(response.status, errorText)) {
+							const delayMs = BASE_DELAY_MS * 2 ** attempt;
+							await sleep(delayMs, options?.signal);
+							continue;
+						}
+
+						const fakeResponse = new Response(errorText, {
+							status: response.status,
+							statusText: response.statusText,
+						});
+						const info = await parseErrorResponse(fakeResponse);
+						throw new Error(info.friendlyMessage || info.message);
+					}
 				} catch (error) {
 					if (error instanceof Error) {
 						if (error.name === "AbortError" || error.message === "Request was aborted") {
@@ -447,8 +478,11 @@ async function processStream(
 	stream: AssistantMessageEventStream,
 	model: Model<"openai-codex-responses">,
 	options?: OpenAICodexResponsesOptions,
+	inactivityTimeout?: InactivityTimeout,
 ): Promise<void> {
-	await processResponsesStream(mapCodexEvents(parseSSE(response)), output, stream, model, {
+	let events = mapCodexEvents(parseSSE(response));
+	if (inactivityTimeout) events = wrapWithInactivityReset(events, () => inactivityTimeout.reset());
+	await processResponsesStream(events, output, stream, model, {
 		serviceTier: options?.serviceTier,
 		resolveServiceTier: resolveCodexServiceTier,
 		applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),
@@ -465,6 +499,57 @@ class CodexApiError extends Error {
 		this.code = options?.code;
 		this.payload = options?.payload;
 		this.cause = options?.cause;
+	}
+}
+
+export class CodexStreamTimeoutError extends Error {
+	readonly code = "ETIMEDOUT";
+
+	constructor(message: string) {
+		super(message);
+		this.name = "CodexStreamTimeoutError";
+	}
+}
+
+class InactivityTimeout {
+	private timer?: ReturnType<typeof setTimeout>;
+	private rejectCallback?: (error: Error) => void;
+
+	constructor(private readonly timeoutMs: number) {}
+
+	start(): Promise<never> {
+		if (this.timeoutMs <= 0) {
+			return new Promise<never>(() => {});
+		}
+		return new Promise<never>((_, reject) => {
+			this.rejectCallback = reject;
+			this.reset();
+		});
+	}
+
+	reset() {
+		if (this.timer) clearTimeout(this.timer);
+		if (this.timeoutMs > 0) {
+			this.timer = setTimeout(() => {
+				if (this.rejectCallback) {
+					this.rejectCallback(
+						new CodexStreamTimeoutError(`Codex stream inactivity timeout after ${this.timeoutMs}ms`),
+					);
+				}
+			}, this.timeoutMs);
+		}
+	}
+
+	stop() {
+		if (this.timer) clearTimeout(this.timer);
+		this.rejectCallback = undefined;
+	}
+}
+
+async function* wrapWithInactivityReset<T>(iterable: AsyncIterable<T>, onEvent: () => void): AsyncGenerator<T> {
+	for await (const event of iterable) {
+		onEvent();
+		yield event;
 	}
 }
 
@@ -1158,6 +1243,7 @@ async function processWebSocketStream(
 	model: Model<"openai-codex-responses">,
 	onStart: () => void,
 	options?: OpenAICodexResponsesOptions,
+	inactivityTimeout?: InactivityTimeout,
 ): Promise<void> {
 	const { socket, entry, reused, release } = await acquireWebSocket(url, headers, options?.sessionId, options?.signal);
 	let keepConnection = true;
@@ -1186,22 +1272,18 @@ async function processWebSocketStream(
 	}
 	try {
 		socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
-		await processResponsesStream(
-			startWebSocketOutputOnFirstEvent(
-				mapCodexEvents(parseWebSocket(socket, options?.signal)),
-				output,
-				stream,
-				onStart,
-			),
+		let events = startWebSocketOutputOnFirstEvent(
+			mapCodexEvents(parseWebSocket(socket, options?.signal)),
 			output,
 			stream,
-			model,
-			{
-				serviceTier: options?.serviceTier,
-				resolveServiceTier: resolveCodexServiceTier,
-				applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),
-			},
+			onStart,
 		);
+		if (inactivityTimeout) events = wrapWithInactivityReset(events, () => inactivityTimeout.reset());
+		await processResponsesStream(events, output, stream, model, {
+			serviceTier: options?.serviceTier,
+			resolveServiceTier: resolveCodexServiceTier,
+			applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),
+		});
 		if (options?.signal?.aborted) {
 			keepConnection = false;
 		} else if (useCachedContext && entry && output.responseId) {
