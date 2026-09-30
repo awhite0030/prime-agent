@@ -1,0 +1,1 @@
+- Fixed an issue where the Codex WebSocket connection would drop with a \`websocket_connection_limit_reached\` error after 60 minutes instead of properly reconnecting on a fresh connection.

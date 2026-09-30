@@ -164,50 +164,70 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 
 			if (transport !== "sse" && !websocketDisabledForSession) {
 				let websocketStarted = false;
-				try {
-					await processWebSocketStream(
-						resolveCodexWebSocketUrl(model.baseUrl),
-						body,
-						websocketHeaders,
-						output,
-						stream,
-						model,
-						() => {
-							websocketStarted = true;
-						},
-						options,
-					);
+				let connectionLimitRetried = false;
 
-					if (options?.signal?.aborted) {
-						throw new Error("Request was aborted");
+				while (true) {
+					try {
+						await processWebSocketStream(
+							resolveCodexWebSocketUrl(model.baseUrl),
+							body,
+							websocketHeaders,
+							output,
+							stream,
+							model,
+							() => {
+								websocketStarted = true;
+							},
+							options,
+						);
+
+						if (options?.signal?.aborted) {
+							throw new Error("Request was aborted");
+						}
+						stream.push({
+							type: "done",
+							reason: output.stopReason as "stop" | "length" | "toolUse",
+							message: output,
+						});
+						stream.end();
+						return;
+					} catch (error) {
+						const aborted = options?.signal?.aborted;
+
+						// Only reset the connection before visible output starts
+						if (
+							!aborted &&
+							!websocketStarted &&
+							!connectionLimitRetried &&
+							error instanceof CodexApiError &&
+							error.code === "websocket_connection_limit_reached"
+						) {
+							connectionLimitRetried = true;
+							// A failed attempt may have supplied response metadata.
+							// Do not retain that dead anchor.
+							delete output.responseId;
+							continue;
+						}
+						if (aborted || isCodexNonTransportError(error)) {
+							throw error;
+						}
+						appendAssistantMessageDiagnostic(
+							output,
+							createAssistantMessageDiagnostic("provider_transport_failure", error, {
+								configuredTransport: transport,
+								fallbackTransport: websocketStarted ? undefined : "sse",
+								eventsEmitted: websocketStarted,
+								phase: websocketStarted ? "after_message_stream_start" : "before_message_stream_start",
+								requestBytes: new TextEncoder().encode(bodyJson).byteLength,
+							}),
+						);
+						recordWebSocketFailure(options?.sessionId, error);
+						if (websocketStarted) {
+							throw error;
+						}
+						recordWebSocketSseFallback(options?.sessionId);
 					}
-					stream.push({
-						type: "done",
-						reason: output.stopReason as "stop" | "length" | "toolUse",
-						message: output,
-					});
-					stream.end();
-					return;
-				} catch (error) {
-					const aborted = options?.signal?.aborted;
-					if (aborted || isCodexNonTransportError(error)) {
-						throw error;
-					}
-					appendAssistantMessageDiagnostic(
-						output,
-						createAssistantMessageDiagnostic("provider_transport_failure", error, {
-							configuredTransport: transport,
-							fallbackTransport: websocketStarted ? undefined : "sse",
-							eventsEmitted: websocketStarted,
-							phase: websocketStarted ? "after_message_stream_start" : "before_message_stream_start",
-							requestBytes: new TextEncoder().encode(bodyJson).byteLength,
-						}),
-					);
-					recordWebSocketFailure(options?.sessionId, error);
-					if (websocketStarted) {
-						throw error;
-					}
-					recordWebSocketSseFallback(options?.sessionId);
+					break;
 				}
 			}
 
