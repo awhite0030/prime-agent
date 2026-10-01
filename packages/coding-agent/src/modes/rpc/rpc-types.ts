@@ -85,6 +85,7 @@ export type RpcCommand =
 	| { id?: string; type: "agent_messages_pause" }
 	| { id?: string; type: "agent_messages_resume" }
 	| { id?: string; type: "agent_messages_clear" }
+	| { id?: string; type: "resume_queue" }
 
 	// Scheduling
 	| { id?: string; type: "list_schedules"; includeInactive?: boolean }

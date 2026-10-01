@@ -668,6 +668,7 @@ export interface AgentConnection {
 		mutation: AgentConnectionQueuedMessageMutation,
 	): Promise<AgentConnectionQueuedMessageMutationStatus>;
 	clearQueue(): Promise<AgentConnectionQueueState>;
+	resumeQueue(): Promise<void>;
 	abortAndClearQueue(): Promise<AgentConnectionQueueState>;
 	acquireSessionInputPause(leaseKey: string): Promise<AgentConnectionSessionInputPause>;
 	listCronJobs(options?: { includeInactive?: boolean }): Promise<AgentCronJob[]>;
