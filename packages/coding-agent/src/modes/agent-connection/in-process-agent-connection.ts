@@ -225,6 +225,10 @@ export class InProcessAgentConnection implements AgentConnection {
 		return this.session.clearQueue();
 	}
 
+	async resumeQueue(): Promise<void> {
+		this.session.resumeQueuedWork();
+	}
+
 	async abortAndClearQueue(): Promise<AgentConnectionQueueState> {
 		const queue = this.session.clearQueue();
 		this.session.requestAbort();

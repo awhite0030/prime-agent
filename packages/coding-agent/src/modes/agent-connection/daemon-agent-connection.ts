@@ -703,6 +703,13 @@ export class DaemonAgentConnection implements AgentConnection {
 		});
 	}
 
+	async resumeQueue(): Promise<void> {
+		await this.requestData<void>({
+			type: "resume_queue",
+			activeSessionId: this.activeSessionId,
+		});
+	}
+
 	async abortAndClearQueue(): Promise<AgentConnectionQueueState> {
 		try {
 			return await this.requestData<AgentConnectionQueueState>({

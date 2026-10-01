@@ -359,6 +359,10 @@ export class RpcClient {
 		await this.send({ type: "abort_bash" });
 	}
 
+	async resumeQueue(): Promise<void> {
+		await this.send({ type: "resume_queue" });
+	}
+
 	/**
 	 * Get session statistics.
 	 */
