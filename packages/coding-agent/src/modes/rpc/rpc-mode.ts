@@ -307,6 +307,9 @@ async function runRpcModeWithConnectionInternal(
 			case "abort_bash":
 				await connection.abortBash();
 				return success(id, command.type);
+			case "resume_queue":
+				await connection.resumeQueue();
+				return success(id, command.type);
 			case "get_session_stats":
 				return success(id, command.type, await connection.getSessionStats());
 			case "export_html":
