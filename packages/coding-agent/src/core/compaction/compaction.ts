@@ -90,7 +90,7 @@ function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 	return undefined;
 }
 
-function getMessageFromEntryForCompaction(entry: SessionEntry): AgentMessage | undefined {
+export function getMessageFromEntryForCompaction(entry: SessionEntry): AgentMessage | undefined {
 	if (entry.type === "compaction") {
 		return undefined;
 	}
@@ -388,8 +388,9 @@ export function findCutPoint(
 
 	for (let i = endIndex - 1; i >= startIndex; i--) {
 		const entry = entries[i];
-		if (entry.type !== "message") continue;
-		const messageTokens = estimateTokens(entry.message);
+		const message = getMessageFromEntryForCompaction(entry);
+		if (!message) continue;
+		const messageTokens = estimateTokens(message);
 		accumulatedTokens += messageTokens;
 		if (accumulatedTokens >= keepRecentTokens) {
 			for (let c = 0; c < cutPoints.length; c++) {
