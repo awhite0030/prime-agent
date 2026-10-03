@@ -3513,6 +3513,22 @@ export class InteractiveMode {
 	}
 
 	private syncWorkingLoader(): void {
+		// Retire loaders if authoritative state says they should be inactive.
+		if (this.autoCompactionLoader && !this.isAgentCompacting()) {
+			this.autoCompactionLoader.stop();
+			this.autoCompactionLoader = undefined;
+			this.statusContainer.clear();
+		}
+		if (this.retryLoader && this.getRetryAttempt() === 0) {
+			if (this.retryCountdown) {
+				this.retryCountdown.dispose();
+				this.retryCountdown = undefined;
+			}
+			this.retryLoader.stop();
+			this.retryLoader = undefined;
+			this.statusContainer.clear();
+		}
+
 		// A compaction that started before this client attached (or while another
 		// view was open) has no start-event edge; restore its loader from state.
 		if (!this.autoCompactionLoader && this.isAgentCompacting()) {
